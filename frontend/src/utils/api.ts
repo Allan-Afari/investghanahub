@@ -1,0 +1,363 @@
+/**
+ * API Utility for InvestGhanaHub Frontend
+ * Handles all API calls to the backend
+ */
+
+import axios, { AxiosInstance, AxiosError } from 'axios';
+import toast from 'react-hot-toast';
+
+// API base URL
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+
+// Create axios instance
+const api: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  timeout: 10000,
+});
+
+// Request interceptor - add auth token
+api.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor - handle errors
+api.interceptors.response.use(
+  (response) => response,
+  (error: AxiosError<{ message?: string }>) => {
+    const message = error.response?.data?.message || error.message || 'An error occurred';
+    
+    // Handle specific error codes
+    if (error.response?.status === 401) {
+      // Clear auth and redirect to login
+      localStorage.removeItem('token');
+      localStorage.removeItem('user');
+      window.location.href = '/login';
+      toast.error('Session expired. Please login again.');
+    } else if (error.response?.status === 403) {
+      toast.error(message);
+    } else if (error.response?.status === 429) {
+      toast.error('Too many requests. Please wait a moment.');
+    } else if (error.response?.status >= 500) {
+      toast.error('Server error. Please try again later.');
+    }
+
+    return Promise.reject(error);
+  }
+);
+
+// ===========================================
+// AUTH API
+// ===========================================
+
+export const authAPI = {
+  register: async (data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    role?: 'INVESTOR' | 'BUSINESS_OWNER';
+  }) => {
+    const response = await api.post('/auth/register', data);
+    return response.data;
+  },
+
+  login: async (email: string, password: string) => {
+    const response = await api.post('/auth/login', { email, password });
+    return response.data;
+  },
+
+  getProfile: async () => {
+    const response = await api.get('/auth/profile');
+    return response.data;
+  },
+
+  updateProfile: async (data: { firstName?: string; lastName?: string; phone?: string }) => {
+    const response = await api.put('/auth/profile', data);
+    return response.data;
+  },
+
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const response = await api.post('/auth/change-password', { currentPassword, newPassword });
+    return response.data;
+  },
+};
+
+// ===========================================
+// KYC API
+// ===========================================
+
+export const kycAPI = {
+  submit: async (data: {
+    ghanaCardNumber: string;
+    dateOfBirth: string;
+    address: string;
+    city: string;
+    region: string;
+    occupation?: string;
+    sourceOfFunds?: string;
+  }) => {
+    const response = await api.post('/kyc/submit', data);
+    return response.data;
+  },
+
+  getStatus: async () => {
+    const response = await api.get('/kyc/status');
+    return response.data;
+  },
+
+  update: async (data: {
+    ghanaCardNumber: string;
+    dateOfBirth: string;
+    address: string;
+    city: string;
+    region: string;
+    occupation?: string;
+    sourceOfFunds?: string;
+  }) => {
+    const response = await api.put('/kyc/update', data);
+    return response.data;
+  },
+
+  // Admin endpoints
+  getPending: async () => {
+    const response = await api.get('/kyc/pending');
+    return response.data;
+  },
+
+  approve: async (id: string) => {
+    const response = await api.post(`/kyc/${id}/approve`);
+    return response.data;
+  },
+
+  reject: async (id: string, reason: string) => {
+    const response = await api.post(`/kyc/${id}/reject`, { reason });
+    return response.data;
+  },
+};
+
+// ===========================================
+// BUSINESS API
+// ===========================================
+
+export const businessAPI = {
+  list: async (params?: { category?: string; region?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/businesses', { params });
+    return response.data;
+  },
+
+  getById: async (id: string) => {
+    const response = await api.get(`/businesses/${id}`);
+    return response.data;
+  },
+
+  getOpportunities: async (id: string) => {
+    const response = await api.get(`/businesses/${id}/opportunities`);
+    return response.data;
+  },
+
+  create: async (data: {
+    name: string;
+    description: string;
+    category: string;
+    location: string;
+    region: string;
+    registrationNumber?: string;
+    targetAmount: number;
+  }) => {
+    const response = await api.post('/businesses', data);
+    return response.data;
+  },
+
+  getMyBusinesses: async () => {
+    const response = await api.get('/businesses/my/list');
+    return response.data;
+  },
+
+  update: async (id: string, data: {
+    name: string;
+    description: string;
+    category: string;
+    location: string;
+    region: string;
+    registrationNumber?: string;
+    targetAmount: number;
+  }) => {
+    const response = await api.put(`/businesses/${id}`, data);
+    return response.data;
+  },
+
+  createOpportunity: async (businessId: string, data: {
+    title: string;
+    description: string;
+    minInvestment: number;
+    maxInvestment: number;
+    expectedReturn: number;
+    duration: number;
+    riskLevel: string;
+    targetAmount: number;
+    startDate: string;
+    endDate: string;
+  }) => {
+    const response = await api.post(`/businesses/${businessId}/opportunities`, data);
+    return response.data;
+  },
+
+  // Admin endpoints
+  getPending: async () => {
+    const response = await api.get('/businesses/admin/pending');
+    return response.data;
+  },
+
+  approve: async (id: string) => {
+    const response = await api.post(`/businesses/${id}/approve`);
+    return response.data;
+  },
+
+  reject: async (id: string, reason: string) => {
+    const response = await api.post(`/businesses/${id}/reject`, { reason });
+    return response.data;
+  },
+};
+
+// ===========================================
+// INVESTMENT API
+// ===========================================
+
+export const investmentAPI = {
+  listOpportunities: async (params?: {
+    category?: string;
+    riskLevel?: string;
+    minAmount?: number;
+    maxAmount?: number;
+    page?: number;
+    limit?: number;
+  }) => {
+    const response = await api.get('/investments/opportunities', { params });
+    return response.data;
+  },
+
+  getOpportunityById: async (id: string) => {
+    const response = await api.get(`/investments/opportunities/${id}`);
+    return response.data;
+  },
+
+  invest: async (opportunityId: string, amount: number) => {
+    const response = await api.post('/investments/invest', { opportunityId, amount });
+    return response.data;
+  },
+
+  getPortfolio: async () => {
+    const response = await api.get('/investments/portfolio');
+    return response.data;
+  },
+
+  getHistory: async (params?: { status?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/investments/history', { params });
+    return response.data;
+  },
+
+  getById: async (id: string) => {
+    const response = await api.get(`/investments/${id}`);
+    return response.data;
+  },
+
+  getTransactions: async (params?: { type?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/investments/transactions/list', { params });
+    return response.data;
+  },
+
+  getStats: async () => {
+    const response = await api.get('/investments/stats/summary');
+    return response.data;
+  },
+};
+
+// ===========================================
+// ADMIN API
+// ===========================================
+
+export const adminAPI = {
+  getDashboard: async () => {
+    const response = await api.get('/admin/dashboard');
+    return response.data;
+  },
+
+  listUsers: async (params?: { role?: string; isActive?: boolean; page?: number; limit?: number }) => {
+    const response = await api.get('/admin/users', { params });
+    return response.data;
+  },
+
+  getUserDetails: async (id: string) => {
+    const response = await api.get(`/admin/users/${id}`);
+    return response.data;
+  },
+
+  updateUserStatus: async (id: string, isActive: boolean) => {
+    const response = await api.patch(`/admin/users/${id}/status`, { isActive });
+    return response.data;
+  },
+
+  listFraudAlerts: async (params?: { status?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/admin/fraud-alerts', { params });
+    return response.data;
+  },
+
+  getFraudAlertDetails: async (id: string) => {
+    const response = await api.get(`/admin/fraud-alerts/${id}`);
+    return response.data;
+  },
+
+  resolveFraudAlert: async (id: string, notes: string, action: 'RESOLVED' | 'DISMISSED') => {
+    const response = await api.post(`/admin/fraud-alerts/${id}/resolve`, { notes, action });
+    return response.data;
+  },
+
+  listAuditLogs: async (params?: {
+    userId?: string;
+    action?: string;
+    entity?: string;
+    startDate?: string;
+    endDate?: string;
+    page?: number;
+    limit?: number;
+  }) => {
+    const response = await api.get('/admin/audit-logs', { params });
+    return response.data;
+  },
+
+  getAuditLogDetails: async (id: string) => {
+    const response = await api.get(`/admin/audit-logs/${id}`);
+    return response.data;
+  },
+
+  getInvestmentReports: async (params?: { startDate?: string; endDate?: string; groupBy?: string }) => {
+    const response = await api.get('/admin/reports/investments', { params });
+    return response.data;
+  },
+
+  getBusinessReports: async () => {
+    const response = await api.get('/admin/reports/businesses');
+    return response.data;
+  },
+
+  createAdmin: async (data: { email: string; password: string; firstName: string; lastName: string }) => {
+    const response = await api.post('/admin/create-admin', data);
+    return response.data;
+  },
+};
+
+export default api;
+

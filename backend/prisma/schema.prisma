@@ -1,0 +1,328 @@
+// Prisma schema for InvestGhanaHub
+// Defines all database models for the Ghana investment platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User roles enum
+enum Role {
+  INVESTOR
+  BUSINESS_OWNER
+  ADMIN
+}
+
+// KYC status enum
+enum KYCStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Business status enum
+enum BusinessStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// Investment opportunity status
+enum OpportunityStatus {
+  OPEN
+  CLOSED
+  FUNDED
+}
+
+// Transaction type enum
+enum TransactionType {
+  INVESTMENT
+  WITHDRAWAL
+  REFUND
+}
+
+// Fraud alert status
+enum FraudAlertStatus {
+  PENDING
+  RESOLVED
+  DISMISSED
+}
+
+// User model - stores all users (investors, business owners, admins)
+model User {
+  id                String       @id @default(uuid())
+  email             String       @unique
+  password          String       // Hashed password
+  firstName         String
+  lastName          String
+  phone             String?
+  phoneVerified     Boolean      @default(false)
+  emailVerified     Boolean      @default(false)
+  role              Role         @default(INVESTOR)
+  isActive          Boolean      @default(true)
+  profileImage      String?      // URL to profile image
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+
+  // Relations
+  kyc               KYC?
+  wallet            Wallet?
+  businesses        Business[]
+  investments       Investment[]
+  transactions      Transaction[]
+  auditLogs         AuditLog[]   @relation("UserAuditLogs")
+  adminAuditLogs    AuditLog[]   @relation("AdminAuditLogs")
+  fraudAlerts       FraudAlert[]
+  otpCodes          OTPCode[]
+  passwordResets    PasswordReset[]
+  notifications     Notification[]
+}
+
+// KYC model - Know Your Customer verification for Ghana compliance
+model KYC {
+  id                    String    @id @default(uuid())
+  userId                String    @unique
+  ghanaCardNumber       String    // Encrypted Ghana Card number
+  ghanaCardEncrypted    Boolean   @default(true)
+  dateOfBirth           DateTime
+  address               String
+  city                  String
+  region                String    // Ghana region
+  occupation            String?
+  sourceOfFunds         String?
+  documentUrl           String?   // URL to uploaded ID document (Ghana Card photo)
+  selfieUrl             String?   // URL to selfie for verification
+  documentType          String?   // GHANA_CARD, PASSPORT, VOTER_ID
+  status                KYCStatus @default(PENDING)
+  rejectionReason       String?
+  reviewedBy            String?   // Admin who reviewed
+  reviewedAt            DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  // Relations
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Business model - Represents crops, startups, or operational businesses
+model Business {
+  id                String         @id @default(uuid())
+  ownerId           String
+  name              String
+  description       String
+  category          String         // crops, startup, operational
+  location          String         // Location in Ghana
+  region            String         // Ghana region
+  registrationNumber String?       // Ghana business registration
+  targetAmount      Float          // Target funding amount in GHS
+  currentAmount     Float          @default(0)
+  status            BusinessStatus @default(PENDING)
+  rejectionReason   String?
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  // Relations
+  owner             User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  opportunities     InvestmentOpportunity[]
+}
+
+// Investment Opportunity model - Specific investment offerings
+model InvestmentOpportunity {
+  id                String            @id @default(uuid())
+  businessId        String
+  title             String
+  description       String
+  minInvestment     Float             // Minimum investment in GHS
+  maxInvestment     Float             // Maximum investment in GHS
+  expectedReturn    Float             // Expected return percentage
+  duration          Int               // Duration in months
+  riskLevel         String            // low, medium, high
+  targetAmount      Float
+  currentAmount     Float             @default(0)
+  status            OpportunityStatus @default(OPEN)
+  startDate         DateTime
+  endDate           DateTime
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Relations
+  business          Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  investments       Investment[]
+}
+
+// Investment model - Records of investments made
+model Investment {
+  id                String              @id @default(uuid())
+  investorId        String
+  opportunityId     String
+  amount            Float               // Amount invested in GHS
+  expectedReturn    Float               // Expected return amount
+  status            String              @default("ACTIVE") // ACTIVE, MATURED, WITHDRAWN
+  investedAt        DateTime            @default(now())
+  maturityDate      DateTime
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  // Relations
+  investor          User                @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  opportunity       InvestmentOpportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  transactions      Transaction[]
+}
+
+// Transaction model - All financial transactions
+model Transaction {
+  id                String          @id @default(uuid())
+  userId            String
+  investmentId      String?
+  type              TransactionType
+  amount            Float
+  currency          String          @default("GHS")
+  reference         String          @unique
+  description       String?
+  status            String          @default("COMPLETED")
+  createdAt         DateTime        @default(now())
+
+  // Relations
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investment        Investment?     @relation(fields: [investmentId], references: [id], onDelete: SetNull)
+}
+
+// Audit Log model - Tracks all important actions for compliance
+model AuditLog {
+  id                String    @id @default(uuid())
+  userId            String    // User who performed the action
+  adminId           String?   // Admin who performed admin action (if applicable)
+  action            String    // Action type (LOGIN, KYC_SUBMIT, INVESTMENT, etc.)
+  entity            String    // Entity affected (User, KYC, Business, etc.)
+  entityId          String?   // ID of affected entity
+  details           String?   // JSON string with additional details
+  ipAddress         String?
+  userAgent         String?
+  createdAt         DateTime  @default(now())
+
+  // Relations
+  user              User      @relation("UserAuditLogs", fields: [userId], references: [id], onDelete: Cascade)
+  admin             User?     @relation("AdminAuditLogs", fields: [adminId], references: [id], onDelete: SetNull)
+}
+
+// Fraud Alert model - Suspicious activity detection
+model FraudAlert {
+  id                String            @id @default(uuid())
+  userId            String
+  alertType         String            // RAPID_INVESTMENTS, HIGH_AMOUNT, SUSPICIOUS_PATTERN
+  description       String
+  riskScore         Float             // 0-100 risk score
+  status            FraudAlertStatus  @default(PENDING)
+  resolvedBy        String?
+  resolvedAt        DateTime?
+  resolutionNotes   String?
+  createdAt         DateTime          @default(now())
+
+  // Relations
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Wallet model - User's wallet for funds
+model Wallet {
+  id                String    @id @default(uuid())
+  userId            String    @unique
+  balance           Float     @default(0)
+  currency          String    @default("GHS")
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  walletTransactions WalletTransaction[]
+}
+
+// Wallet Transaction model - Deposits/Withdrawals
+model WalletTransaction {
+  id                String    @id @default(uuid())
+  walletId          String
+  type              String    // DEPOSIT, WITHDRAWAL, INVESTMENT, RETURN
+  amount            Float
+  fee               Float     @default(0)
+  reference         String    @unique
+  paymentMethod     String?   // MOMO_MTN, MOMO_VODAFONE, MOMO_AIRTELTIGO, BANK
+  paymentReference  String?   // External payment reference
+  status            String    @default("PENDING") // PENDING, COMPLETED, FAILED
+  description       String?
+  metadata          String?   // JSON string for extra data
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  wallet            Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+}
+
+// OTP Code model - For phone/email verification
+model OTPCode {
+  id                String    @id @default(uuid())
+  userId            String
+  code              String
+  type              String    // PHONE_VERIFY, EMAIL_VERIFY, LOGIN, TRANSACTION
+  expiresAt         DateTime
+  isUsed            Boolean   @default(false)
+  attempts          Int       @default(0)
+  createdAt         DateTime  @default(now())
+
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Password Reset model
+model PasswordReset {
+  id                String    @id @default(uuid())
+  userId            String
+  token             String    @unique
+  expiresAt         DateTime
+  isUsed            Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Notification model - In-app and push notifications
+model Notification {
+  id                String    @id @default(uuid())
+  userId            String
+  title             String
+  message           String
+  type              String    // INFO, SUCCESS, WARNING, ERROR
+  category          String    // KYC, INVESTMENT, TRANSACTION, SYSTEM
+  isRead            Boolean   @default(false)
+  link              String?   // Optional link to redirect
+  createdAt         DateTime  @default(now())
+
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Payment model - Track all payments via Paystack
+model Payment {
+  id                String    @id @default(uuid())
+  userId            String
+  amount            Float
+  fee               Float     @default(0)
+  currency          String    @default("GHS")
+  reference         String    @unique
+  paystackReference String?
+  paymentMethod     String    // MOMO_MTN, MOMO_VODAFONE, MOMO_AIRTELTIGO, CARD, BANK
+  phoneNumber       String?   // For mobile money
+  status            String    @default("PENDING") // PENDING, SUCCESS, FAILED
+  type              String    // DEPOSIT, WITHDRAWAL
+  metadata          String?
+  paidAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+}
+
