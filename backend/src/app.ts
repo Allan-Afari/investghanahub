@@ -65,7 +65,25 @@ app.use(helmet());
 
 // CORS configuration
 const corsOptions = {
-  origin: env.NODE_ENV === 'production' ? env.FRONTEND_URL : true,
+  origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+    // Mobile apps (Capacitor / WebView) often send no Origin header.
+    if (!origin) return callback(null, true);
+
+    const allowedOrigins = new Set([
+      env.FRONTEND_URL,
+      'capacitor://localhost',
+      'ionic://localhost',
+      'http://localhost',
+      'https://localhost',
+    ]);
+
+    if (allowedOrigins.has(origin)) return callback(null, true);
+
+    // Allow local network origins during development/testing.
+    if (/^https?:\/\/192\.168\./.test(origin)) return callback(null, true);
+
+    return callback(null, false);
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
