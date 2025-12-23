@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">InvestGhanaHub</string>
+    <string name="title_activity_main">InvestGhanaHub</string>
+    <string name="package_name">com.investghanahub.app</string>
+    <string name="custom_url_scheme">com.investghanahub.app</string>
+</resources>

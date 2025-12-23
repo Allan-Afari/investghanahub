@@ -11,6 +11,14 @@ import { useAuth } from '../App';
 import { authAPI } from '../utils/api';
 import FormInput from '../components/FormInput';
 
+interface ApiErrorShape {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+}
+
 export default function LoginPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
@@ -63,26 +71,44 @@ export default function LoginPage() {
       const response = await authAPI.login(formData.email, formData.password);
       
       if (response.success) {
-        login(response.data.user, response.data.token);
+        const user = response.data.user;
+        login(user, response.data.token);
         toast.success('Welcome back!');
         
-        // Redirect based on role
-        const role = response.data.user.role;
-        if (role === 'ADMIN') {
+        // Role-based navigation with context-aware routing
+        if (user.role === 'ADMIN') {
           navigate('/admin');
-        } else if (role === 'BUSINESS_OWNER') {
-          navigate('/owner');
-        } else {
+        } else if (user.role === 'BUSINESS_OWNER') {
+          // Check if business is set up
+          navigate('/owner', { 
+            replace: true,
+            state: { from: '/login' }
+          });
+        } else if (user.role === 'INVESTOR') {
           // Check KYC status for investors
-          if (response.data.user.kycStatus !== 'APPROVED') {
-            navigate('/kyc');
-          } else {
+          if (user.kycStatus === 'APPROVED') {
             navigate('/investor');
+          } else if (user.kycStatus === 'REJECTED') {
+            navigate('/kyc', {
+              state: { 
+                message: 'Your KYC was rejected. Please resubmit.',
+                previousStatus: 'REJECTED'
+              }
+            });
+          } else {
+            // PENDING or NOT_SUBMITTED
+            navigate('/kyc', {
+              state: {
+                message: 'Complete KYC verification to start investing',
+                previousStatus: user.kycStatus
+              }
+            });
           }
         }
       }
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Login failed. Please try again.';
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      const message = err.response?.data?.message || 'Login failed. Please try again.';
       toast.error(message);
       setErrors({ general: message });
     } finally {

@@ -12,7 +12,6 @@ import {
   Clock,
   ArrowUpRight,
   Loader2,
-  Filter,
   Search,
   Leaf,
   Rocket,
@@ -24,6 +23,16 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../App';
 import { investmentAPI, kycAPI } from '../utils/api';
 import DashboardTable from '../components/DashboardTable';
+
+type InvestorTab = 'opportunities' | 'portfolio' | 'history';
+
+interface ApiErrorShape {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+}
 
 interface Opportunity {
   id: string;
@@ -55,17 +64,39 @@ interface Portfolio {
     totalCount: number;
   };
   byCategory: Record<string, { count: number; amount: number }>;
-  recentInvestments: any[];
+  recentInvestments: RecentInvestment[];
+}
+
+interface RecentInvestment {
+  id: string;
+  opportunityTitle: string;
+  businessName: string;
+  amount: number;
+  investedAt: string;
+}
+
+interface InvestmentHistoryItem {
+  id: string;
+  amount: number;
+  expectedReturn: number;
+  status: string;
+  investedAt: string;
+  opportunity?: {
+    title?: string;
+    business?: {
+      name?: string;
+    };
+  };
 }
 
 export default function InvestorPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   
-  const [activeTab, setActiveTab] = useState<'opportunities' | 'portfolio' | 'history'>('opportunities');
+  const [activeTab, setActiveTab] = useState<InvestorTab>('opportunities');
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [investments, setInvestments] = useState<any[]>([]);
+  const [investments, setInvestments] = useState<InvestmentHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [kycStatus, setKycStatus] = useState<string>('');
   
@@ -140,8 +171,9 @@ export default function InvestorPage() {
       setSelectedOpportunity(null);
       setInvestAmount('');
       fetchData();
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Investment failed';
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      const message = err.response?.data?.message || 'Investment failed';
       toast.error(message);
     } finally {
       setIsInvesting(false);
@@ -220,14 +252,16 @@ export default function InvestorPage() {
 
         {/* Tabs */}
         <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-          {[
-            { id: 'opportunities', label: 'Opportunities', icon: TrendingUp },
-            { id: 'portfolio', label: 'Portfolio', icon: PieChart },
-            { id: 'history', label: 'History', icon: Clock }
-          ].map(tab => (
+          {(
+            [
+              { id: 'opportunities', label: 'Opportunities', icon: TrendingUp },
+              { id: 'portfolio', label: 'Portfolio', icon: PieChart },
+              { id: 'history', label: 'History', icon: Clock },
+            ] as const
+          ).map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-all ${
                 activeTab === tab.id
                   ? 'bg-ghana-gold-500 text-dark-950 font-medium'

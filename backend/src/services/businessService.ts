@@ -497,6 +497,110 @@ class BusinessService {
       }
     });
   }
+
+  /**
+   * Get business info for owner (dashboard)
+   * @param ownerId - Owner's ID
+   * @returns Business information
+   */
+  async getOwnerBusinessInfo(ownerId: string): Promise<any> {
+    const business = await prisma.business.findFirst({
+      where: { ownerId }
+    });
+
+    if (!business) return null;
+
+    // Get investor count
+    const opportunities = await prisma.investmentOpportunity.findMany({
+      where: { businessId: business.id }
+    });
+
+    const investments = await prisma.investment.findMany({
+      where: {
+        opportunityId: {
+          in: opportunities.map((o: any) => o.id)
+        }
+      }
+    });
+
+    const uniqueInvestors = new Set(investments.map(i => i.investorId)).size;
+
+    return {
+      id: business.id,
+      name: business.name,
+      description: business.description,
+      category: business.category,
+      targetCapital: business.targetAmount,
+      raisedAmount: investments.reduce((sum, inv) => sum + (inv.amount || 0), 0),
+      status: business.status,
+      createdAt: business.createdAt,
+      investors: uniqueInvestors
+    };
+  }
+
+  /**
+   * Get owner's opportunities (dashboard)
+   * @param ownerId - Owner's ID
+   * @param filters - Filter options
+   * @returns List of opportunities
+   */
+  async getOwnerOpportunities(ownerId: string, filters: any = {}): Promise<any> {
+    const page = filters.page || 1;
+    const limit = filters.limit || 10;
+    const skip = (page - 1) * limit;
+
+    // Get owner's businesses first
+    const businesses = await prisma.business.findMany({
+      where: { ownerId }
+    });
+
+    const businessIds = businesses.map(b => b.id);
+
+    const where: any = { businessId: { in: businessIds } };
+    if (filters.status) {
+      where.status = filters.status;
+    }
+
+    const opportunities = await prisma.investmentOpportunity.findMany({
+      where,
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const total = await prisma.investmentOpportunity.count({ where });
+
+    // Get investment counts
+    const formatted = await Promise.all(opportunities.map(async (opp: any) => {
+      const investments = await prisma.investment.findMany({
+        where: { opportunityId: opp.id }
+      });
+
+      const raisedAmount = investments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+
+      return {
+        id: opp.id,
+        title: opp.title,
+        description: opp.description,
+        targetAmount: opp.targetAmount,
+        raisedAmount,
+        investorCount: investments.length,
+        status: opp.status,
+        expectedROI: opp.expectedReturn || 0,
+        createdAt: opp.createdAt
+      };
+    }));
+
+    return {
+      data: formatted,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  }
 }
 
 // Export singleton instance

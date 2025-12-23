@@ -14,15 +14,12 @@ const AUTH_TAG_LENGTH = 16;
  * Get encryption key from environment
  * Key must be 32 characters for AES-256
  */
+import { env } from '../config/env';
+
 function getEncryptionKey(): Buffer {
-  const key = process.env.ENCRYPTION_KEY || 'default-32-char-key-change-this!';
-  
-  // Ensure key is exactly 32 bytes
-  if (key.length !== 32) {
-    console.warn('⚠️ ENCRYPTION_KEY should be exactly 32 characters');
-  }
-  
-  return Buffer.from(key.padEnd(32, '0').slice(0, 32));
+  const key = env.ENCRYPTION_KEY;
+  // Key is already validated in env.ts to be exactly 32 characters
+  return Buffer.from(key, 'utf8');
 }
 
 /**

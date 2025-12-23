@@ -1,0 +1,13 @@
+{
+  "name": "investghanahub",
+  "private": true,
+  "scripts": {
+    "dev": "node dev.mjs",
+    "lint": "npm run lint --prefix frontend && npm run lint --prefix backend",
+    "build": "npm run build --prefix frontend && npm run build --prefix backend",
+    "test": "npm test --prefix backend"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0"
+  }
+}

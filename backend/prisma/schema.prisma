@@ -1,3 +1,4 @@
+
 // Prisma schema for InvestGhanaHub
 // Defines all database models for the Ghana investment platform
 
@@ -80,6 +81,7 @@ model User {
   otpCodes          OTPCode[]
   passwordResets    PasswordReset[]
   notifications     Notification[]
+  profitTransfers   ProfitTransfer[]
 }
 
 // KYC model - Know Your Customer verification for Ghana compliance
@@ -130,6 +132,7 @@ model Business {
   // Relations
   owner             User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   opportunities     InvestmentOpportunity[]
+  bankAccount       BankAccount?
 }
 
 // Investment Opportunity model - Specific investment offerings
@@ -173,6 +176,7 @@ model Investment {
   investor          User                @relation(fields: [investorId], references: [id], onDelete: Cascade)
   opportunity       InvestmentOpportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
   transactions      Transaction[]
+  profitTransfers   ProfitTransfer[]
 }
 
 // Transaction model - All financial transactions
@@ -305,6 +309,50 @@ model Notification {
 
   // Relations
   user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// Bank Account model - Business bank details for profit transfers
+model BankAccount {
+  id                String    @id @default(uuid())
+  businessId        String    @unique
+  accountHolderName String
+  accountNumber     String    @unique
+  bankCode          String    // Ghana bank codes
+  bankName          String
+  accountType       String    // SAVINGS, CHECKING
+  isVerified        Boolean   @default(false)
+  verifiedAt        DateTime?
+  currency          String    @default("GHS")
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  business          Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  profitTransfers   ProfitTransfer[]
+}
+
+// Profit Transfer model - Track profit distributions to investors
+model ProfitTransfer {
+  id                String    @id @default(uuid())
+  investmentId      String
+  bankAccountId     String
+  investorId        String
+  amount            Float     // Amount transferred
+  profitAmount      Float     // Actual profit portion
+  investedAmount    Float     // Reference to original investment
+  reference         String    @unique
+  paystackReference String?   // External payment reference
+  status            String    @default("PENDING") // PENDING, PROCESSING, COMPLETED, FAILED
+  failureReason     String?
+  transferredAt     DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  investment        Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  bankAccount       BankAccount @relation(fields: [bankAccountId], references: [id])
+  investor          User      @relation(fields: [investorId], references: [id])
 }
 
 // Payment model - Track all payments via Paystack

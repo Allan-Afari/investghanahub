@@ -24,7 +24,15 @@ interface WalletData {
   id: string;
   balance: number;
   currency: string;
-  walletTransactions: any[];
+  walletTransactions: WalletTransaction[];
+}
+
+interface WalletTransaction {
+  id: string;
+  type: string;
+  amount: number;
+  status: string;
+  createdAt: string;
 }
 
 export default function WalletPage() {
@@ -404,9 +412,9 @@ export default function WalletPage() {
           <div className="card">
             <h2 className="text-xl font-semibold mb-6">Transaction History</h2>
 
-            {wallet?.walletTransactions && wallet.walletTransactions.length > 0 ? (
-              <div className="space-y-3">
-                {wallet.walletTransactions.map((tx: any) => (
+              {wallet?.walletTransactions && wallet.walletTransactions.length > 0 ? (
+                <div className="space-y-3">
+                {wallet.walletTransactions.map((tx: WalletTransaction) => (
                   <div 
                     key={tx.id}
                     className="flex items-center justify-between p-4 bg-dark-800/50 rounded-xl"

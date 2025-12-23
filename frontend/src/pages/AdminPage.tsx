@@ -12,24 +12,120 @@ import {
   AlertTriangle,
   FileText,
   Loader2,
-  CheckCircle2,
-  XCircle,
-  Clock,
   TrendingUp,
   Eye
 } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { adminAPI, kycAPI, businessAPI } from '../utils/api';
 import DashboardTable from '../components/DashboardTable';
 
 type TabType = 'dashboard' | 'kyc' | 'businesses' | 'fraud' | 'audit' | 'users';
 
+type ActionType = 'kyc-approve' | 'kyc-reject' | 'biz-approve' | 'biz-reject' | 'fraud' | '';
+
+interface ApiErrorShape {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+}
+
+interface RecentInvestment {
+  investor: string;
+  opportunity: string;
+  amount: number;
+  date: string;
+}
+
+interface RecentBusiness {
+  name: string;
+  category: string;
+  status: string;
+}
+
+interface PendingKYC {
+  id: string;
+  region: string;
+  ghanaCardMasked: string;
+  createdAt: string;
+  user: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+}
+
+interface PendingBusiness {
+  id: string;
+  name: string;
+  region: string;
+  category: string;
+  targetAmount: number;
+  owner: {
+    firstName: string;
+    lastName: string;
+  };
+}
+
+interface FraudAlert {
+  id: string;
+  alertType: string;
+  description: string;
+  riskScore: number;
+  user: {
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
+}
+
+interface AuditLog {
+  id: string;
+  action: string;
+  entity: string;
+  createdAt: string;
+  user: {
+    firstName: string;
+    lastName: string;
+  };
+  admin?: {
+    firstName: string;
+  } | null;
+}
+
+interface UserRow {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  role: string;
+  kycStatus?: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+type SelectedItem = PendingKYC | PendingBusiness | FraudAlert;
+
+function isPendingKYC(item: SelectedItem): item is PendingKYC {
+  return (item as PendingKYC).user !== undefined;
+}
+
+function isPendingBusiness(item: SelectedItem): item is PendingBusiness {
+  return (item as PendingBusiness).owner !== undefined;
+}
+
+function isFraudAlert(item: SelectedItem): item is FraudAlert {
+  return (item as FraudAlert).alertType !== undefined;
+}
+
 interface DashboardStats {
   users: { total: number; investors: number; businessOwners: number };
   businesses: { total: number; approved: number; pending: number };
   investments: { total: number; totalAmount: number; last30Days: { count: number; amount: number } };
   pending: { kyc: number; fraudAlerts: number };
-  recentActivity: { investments: any[]; businesses: any[] };
+  recentActivity: { investments: RecentInvestment[]; businesses: RecentBusiness[] };
 }
 
 export default function AdminPage() {
@@ -38,15 +134,15 @@ export default function AdminPage() {
   
   // Data states
   const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
-  const [pendingKYCs, setPendingKYCs] = useState<any[]>([]);
-  const [pendingBusinesses, setPendingBusinesses] = useState<any[]>([]);
-  const [fraudAlerts, setFraudAlerts] = useState<any[]>([]);
-  const [auditLogs, setAuditLogs] = useState<any[]>([]);
-  const [users, setUsers] = useState<any[]>([]);
+  const [pendingKYCs, setPendingKYCs] = useState<PendingKYC[]>([]);
+  const [pendingBusinesses, setPendingBusinesses] = useState<PendingBusiness[]>([]);
+  const [fraudAlerts, setFraudAlerts] = useState<FraudAlert[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [users, setUsers] = useState<UserRow[]>([]);
   
   // Modal states
-  const [selectedItem, setSelectedItem] = useState<any>(null);
-  const [actionType, setActionType] = useState<string>('');
+  const [selectedItem, setSelectedItem] = useState<SelectedItem | null>(null);
+  const [actionType, setActionType] = useState<ActionType>('');
   const [rejectReason, setRejectReason] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
 
@@ -60,29 +156,41 @@ export default function AdminPage() {
     try {
       switch (activeTab) {
         case 'dashboard':
-          const dashResponse = await adminAPI.getDashboard();
-          setDashboardStats(dashResponse.data);
-          break;
+          {
+            const dashResponse = await adminAPI.getDashboard();
+            setDashboardStats(dashResponse.data);
+            break;
+          }
         case 'kyc':
-          const kycResponse = await kycAPI.getPending();
-          setPendingKYCs(kycResponse.data || []);
-          break;
+          {
+            const kycResponse = await kycAPI.getPending();
+            setPendingKYCs((kycResponse.data || []) as PendingKYC[]);
+            break;
+          }
         case 'businesses':
-          const bizResponse = await businessAPI.getPending();
-          setPendingBusinesses(bizResponse.data || []);
-          break;
+          {
+            const bizResponse = await businessAPI.getPending();
+            setPendingBusinesses((bizResponse.data || []) as PendingBusiness[]);
+            break;
+          }
         case 'fraud':
-          const fraudResponse = await adminAPI.listFraudAlerts({ status: 'PENDING' });
-          setFraudAlerts(fraudResponse.data.alerts || []);
-          break;
+          {
+            const fraudResponse = await adminAPI.listFraudAlerts({ status: 'PENDING' });
+            setFraudAlerts((fraudResponse.data.alerts || []) as FraudAlert[]);
+            break;
+          }
         case 'audit':
-          const auditResponse = await adminAPI.listAuditLogs({ limit: 100 });
-          setAuditLogs(auditResponse.data.logs || []);
-          break;
+          {
+            const auditResponse = await adminAPI.listAuditLogs({ limit: 100 });
+            setAuditLogs((auditResponse.data.logs || []) as AuditLog[]);
+            break;
+          }
         case 'users':
-          const usersResponse = await adminAPI.listUsers({ limit: 100 });
-          setUsers(usersResponse.data.users || []);
-          break;
+          {
+            const usersResponse = await adminAPI.listUsers({ limit: 100 });
+            setUsers((usersResponse.data.users || []) as UserRow[]);
+            break;
+          }
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -94,7 +202,7 @@ export default function AdminPage() {
 
   // Handle KYC actions
   const handleKYCAction = async (action: 'approve' | 'reject') => {
-    if (!selectedItem) return;
+    if (!selectedItem || !isPendingKYC(selectedItem)) return;
     if (action === 'reject' && !rejectReason.trim()) {
       toast.error('Please provide a rejection reason');
       return;
@@ -112,8 +220,9 @@ export default function AdminPage() {
       setSelectedItem(null);
       setRejectReason('');
       fetchData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Action failed');
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      toast.error(err.response?.data?.message || 'Action failed');
     } finally {
       setIsProcessing(false);
     }
@@ -121,7 +230,7 @@ export default function AdminPage() {
 
   // Handle Business actions
   const handleBusinessAction = async (action: 'approve' | 'reject') => {
-    if (!selectedItem) return;
+    if (!selectedItem || !isPendingBusiness(selectedItem)) return;
     if (action === 'reject' && !rejectReason.trim()) {
       toast.error('Please provide a rejection reason');
       return;
@@ -139,8 +248,9 @@ export default function AdminPage() {
       setSelectedItem(null);
       setRejectReason('');
       fetchData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Action failed');
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      toast.error(err.response?.data?.message || 'Action failed');
     } finally {
       setIsProcessing(false);
     }
@@ -148,7 +258,7 @@ export default function AdminPage() {
 
   // Handle Fraud Alert resolution
   const handleFraudAction = async (action: 'RESOLVED' | 'DISMISSED') => {
-    if (!selectedItem || !rejectReason.trim()) {
+    if (!selectedItem || !isFraudAlert(selectedItem) || !rejectReason.trim()) {
       toast.error('Please provide resolution notes');
       return;
     }
@@ -160,8 +270,9 @@ export default function AdminPage() {
       setSelectedItem(null);
       setRejectReason('');
       fetchData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Action failed');
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      toast.error(err.response?.data?.message || 'Action failed');
     } finally {
       setIsProcessing(false);
     }
@@ -173,19 +284,20 @@ export default function AdminPage() {
       await adminAPI.updateUserStatus(userId, !currentStatus);
       toast.success(`User ${currentStatus ? 'deactivated' : 'activated'}`);
       fetchData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Action failed');
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      toast.error(err.response?.data?.message || 'Action failed');
     }
   };
 
   // Tab items
-  const tabs = [
+  const tabs: Array<{ id: TabType; label: string; icon: LucideIcon; badge?: number }> = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'kyc', label: 'KYC Approvals', icon: Shield, badge: dashboardStats?.pending.kyc },
     { id: 'businesses', label: 'Businesses', icon: Building2 },
     { id: 'fraud', label: 'Fraud Alerts', icon: AlertTriangle, badge: dashboardStats?.pending.fraudAlerts },
     { id: 'users', label: 'Users', icon: Users },
-    { id: 'audit', label: 'Audit Logs', icon: FileText }
+    { id: 'audit', label: 'Audit Logs', icon: FileText },
   ];
 
   return (
@@ -293,8 +405,8 @@ export default function AdminPage() {
                 <div className="grid md:grid-cols-2 gap-6">
                   <div className="card">
                     <h3 className="font-semibold mb-4">Recent Investments</h3>
-                    {dashboardStats.recentActivity.investments.map((inv: any, i: number) => (
-                      <div key={i} className="flex justify-between py-3 border-b border-dark-800 last:border-0">
+                    {dashboardStats.recentActivity.investments.map((inv, i) => (
+                      <div key={`${inv.investor}-${inv.opportunity}-${i}`} className="flex justify-between py-3 border-b border-dark-800 last:border-0">
                         <div>
                           <p className="font-medium">{inv.investor}</p>
                           <p className="text-xs text-dark-500">{inv.opportunity}</p>
@@ -311,8 +423,8 @@ export default function AdminPage() {
                   </div>
                   <div className="card">
                     <h3 className="font-semibold mb-4">Recent Businesses</h3>
-                    {dashboardStats.recentActivity.businesses.map((biz: any, i: number) => (
-                      <div key={i} className="flex justify-between items-center py-3 border-b border-dark-800 last:border-0">
+                    {dashboardStats.recentActivity.businesses.map((biz, i) => (
+                      <div key={`${biz.name}-${i}`} className="flex justify-between items-center py-3 border-b border-dark-800 last:border-0">
                         <div>
                           <p className="font-medium">{biz.name}</p>
                           <p className="text-xs text-dark-500 capitalize">{biz.category}</p>
@@ -525,7 +637,7 @@ export default function AdminPage() {
         {selectedItem && (
           <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <div className="card max-w-md w-full animate-slide-up">
-              {actionType === 'kyc-approve' && (
+              {actionType === 'kyc-approve' && isPendingKYC(selectedItem) && (
                 <>
                   <h3 className="text-xl font-display font-bold mb-4">Approve KYC</h3>
                   <p className="text-dark-400 mb-6">
@@ -544,7 +656,7 @@ export default function AdminPage() {
                 </>
               )}
 
-              {actionType === 'kyc-reject' && (
+              {actionType === 'kyc-reject' && isPendingKYC(selectedItem) && (
                 <>
                   <h3 className="text-xl font-display font-bold mb-4">Reject KYC</h3>
                   <div className="mb-4">
@@ -570,7 +682,7 @@ export default function AdminPage() {
                 </>
               )}
 
-              {actionType === 'biz-approve' && (
+              {actionType === 'biz-approve' && isPendingBusiness(selectedItem) && (
                 <>
                   <h3 className="text-xl font-display font-bold mb-4">Approve Business</h3>
                   <p className="text-dark-400 mb-6">
@@ -589,7 +701,7 @@ export default function AdminPage() {
                 </>
               )}
 
-              {actionType === 'biz-reject' && (
+              {actionType === 'biz-reject' && isPendingBusiness(selectedItem) && (
                 <>
                   <h3 className="text-xl font-display font-bold mb-4">Reject Business</h3>
                   <div className="mb-4">
@@ -615,7 +727,7 @@ export default function AdminPage() {
                 </>
               )}
 
-              {actionType === 'fraud' && (
+              {actionType === 'fraud' && isFraudAlert(selectedItem) && (
                 <>
                   <h3 className="text-xl font-display font-bold mb-4">Review Fraud Alert</h3>
                   <div className="bg-dark-800/50 rounded-lg p-4 mb-4">

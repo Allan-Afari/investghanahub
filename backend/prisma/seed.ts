@@ -195,6 +195,65 @@ async function main() {
     }
   });
 
+  // Create additional test users for admin dashboard testing
+  console.log('👤 Creating additional test users for admin dashboard...');
+  
+  const investor4 = await prisma.user.create({
+    data: {
+      email: 'abena.owusu@email.com',
+      password: investorPassword,
+      firstName: 'Abena',
+      lastName: 'Owusu',
+      phone: '+233240004444',
+      role: 'INVESTOR',
+      isActive: true
+    }
+  });
+
+  const owner3 = await prisma.user.create({
+    data: {
+      email: 'nana.oppong@email.com',
+      password: ownerPassword,
+      firstName: 'Nana',
+      lastName: 'Oppong',
+      phone: '+233540003333',
+      role: 'BUSINESS_OWNER',
+      isActive: true
+    }
+  });
+
+  // Create pending KYC for investor4 (for admin dashboard)
+  await prisma.kYC.create({
+    data: {
+      userId: investor4.id,
+      ghanaCardNumber: simpleEncrypt('GHA-555555555-5'),
+      dateOfBirth: new Date('1992-01-25'),
+      address: '99 Ridge Road',
+      city: 'Tema',
+      region: 'Greater Accra',
+      occupation: 'Accountant',
+      sourceOfFunds: 'Business Income',
+      status: 'PENDING'
+    }
+  });
+
+  // Create approved KYC for owner3
+  await prisma.kYC.create({
+    data: {
+      userId: owner3.id,
+      ghanaCardNumber: simpleEncrypt('GHA-666666666-6'),
+      dateOfBirth: new Date('1980-06-12'),
+      address: '123 Asante Road',
+      city: 'Cape Coast',
+      region: 'Central',
+      occupation: 'Entrepreneur',
+      sourceOfFunds: 'Trading Business',
+      status: 'APPROVED',
+      reviewedBy: admin.id,
+      reviewedAt: new Date()
+    }
+  });
+
   // Create Businesses
   console.log('🏭 Creating businesses...');
 
@@ -258,6 +317,20 @@ async function main() {
       location: 'Tema Free Zone',
       region: 'Greater Accra',
       targetAmount: 250000,
+      status: 'PENDING'
+    }
+  });
+
+  // Pending business for admin dashboard
+  const business5 = await prisma.business.create({
+    data: {
+      ownerId: owner3.id,
+      name: 'Cape Coast Fish Farm',
+      description: 'An aquaculture farm specializing in tilapia and catfish production. We use sustainable farming practices and aim to supply fresh fish to local markets and export markets.',
+      category: 'crops',
+      location: 'Cape Coast Beach',
+      region: 'Central',
+      targetAmount: 300000,
       status: 'PENDING'
     }
   });

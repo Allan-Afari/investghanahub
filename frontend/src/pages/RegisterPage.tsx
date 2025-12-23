@@ -11,6 +11,20 @@ import { useAuth } from '../App';
 import { authAPI } from '../utils/api';
 import FormInput from '../components/FormInput';
 
+interface ApiErrorShape {
+  response?: {
+    data?: {
+      message?: string;
+      errors?: BackendFieldError[];
+    };
+  };
+}
+
+interface BackendFieldError {
+  path?: string;
+  msg: string;
+}
+
 type Role = 'INVESTOR' | 'BUSINESS_OWNER';
 
 export default function RegisterPage() {
@@ -91,30 +105,52 @@ export default function RegisterPage() {
     setIsLoading(true);
 
     try {
-      const response = await authAPI.register({
+      // Use dedicated endpoints based on role
+      const endpoint = formData.role === 'INVESTOR'
+        ? authAPI.registerInvestor
+        : authAPI.registerBusinessOwner;
+
+      const response = await endpoint({
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,
         phone: formData.phone || undefined,
-        password: formData.password,
-        role: formData.role
+        password: formData.password
       });
       
       if (response.success) {
         login(response.data.user, response.data.token);
-        toast.success('Account created successfully! Please complete your KYC.');
-        navigate('/kyc');
+        toast.success(response.message || 'Account created successfully!');
+        
+        // Role-based navigation
+        if (formData.role === 'INVESTOR') {
+          navigate('/kyc', { 
+            state: { 
+              message: 'Complete KYC verification to start investing',
+              role: 'investor'
+            } 
+          });
+        } else {
+          // Business owner goes to capital raising registration
+          navigate('/capital-raising', {
+            state: {
+              message: 'Register your business to start raising capital',
+              role: 'business_owner'
+            }
+          });
+        }
       }
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Registration failed. Please try again.';
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      const message = err.response?.data?.message || 'Registration failed. Please try again.';
       toast.error(message);
       
       // Handle validation errors from backend
-      if (error.response?.data?.errors) {
+      if (err.response?.data?.errors) {
         const backendErrors: Record<string, string> = {};
-        error.response.data.errors.forEach((err: any) => {
-          if (err.path) {
-            backendErrors[err.path] = err.msg;
+        err.response.data.errors.forEach((fieldError) => {
+          if (fieldError.path) {
+            backendErrors[fieldError.path] = fieldError.msg;
           }
         });
         setErrors(backendErrors);

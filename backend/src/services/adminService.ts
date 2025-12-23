@@ -771,6 +771,269 @@ class AdminService {
 
     return admin;
   }
+
+  /**
+   * Get platform statistics for admin dashboard
+   * @returns Platform statistics
+   */
+  async getStats(): Promise<any> {
+    const totalUsers = await prisma.user.count();
+    const totalInvestments = await prisma.investment.count();
+    
+    const investments = await prisma.investment.findMany();
+    const totalCapitalRaised = investments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+
+    const activeOpportunities = await prisma.investmentOpportunity.count({
+      where: { status: 'OPEN' }
+    });
+
+    const kycPending = await prisma.kYC.count({
+      where: { status: 'PENDING' }
+    });
+
+    const businessesPending = await prisma.business.count({
+      where: { status: 'PENDING' }
+    });
+
+    return {
+      totalUsers,
+      totalInvestments,
+      totalCapitalRaised,
+      activeOpportunities,
+      kycPending,
+      businessesPending
+    };
+  }
+
+  /**
+   * Get pending KYC requests for dashboard
+   * @param filters - Filter options
+   * @returns List of pending KYC requests
+   */
+  async getPendingKYC(filters: any = {}): Promise<any> {
+    const page = filters.page || 1;
+    const limit = filters.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const kycRequests = await prisma.kYC.findMany({
+      where: { status: 'PENDING' },
+      include: { user: true },
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const total = await prisma.kYC.count({
+      where: { status: 'PENDING' }
+    });
+
+    const formatted = kycRequests.map((kyc: any) => ({
+      id: kyc.id,
+      userId: kyc.userId,
+      userName: `${kyc.user?.firstName || ''} ${kyc.user?.lastName || ''}`.trim(),
+      email: kyc.user?.email,
+      status: kyc.status,
+      submittedAt: kyc.createdAt,
+      verificationMethod: 'GHANA_CARD'
+    }));
+
+    return {
+      data: formatted,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  /**
+   * Get pending business registrations for dashboard
+   * @param filters - Filter options
+   * @returns List of pending businesses
+   */
+  async getPendingBusinesses(filters: any = {}): Promise<any> {
+    const page = filters.page || 1;
+    const limit = filters.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const businesses = await prisma.business.findMany({
+      where: { status: 'PENDING' },
+      include: { owner: true },
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const total = await prisma.business.count({
+      where: { status: 'PENDING' }
+    });
+
+    const formatted = businesses.map((biz: any) => ({
+      id: biz.id,
+      ownerName: `${biz.owner?.firstName || ''} ${biz.owner?.lastName || ''}`.trim(),
+      businessName: biz.name,
+      category: biz.category,
+      targetCapital: biz.targetAmount,
+      status: biz.status,
+      submittedAt: biz.createdAt
+    }));
+
+    return {
+      data: formatted,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  /**
+   * Approve KYC application
+   * @param userId - User ID
+   * @param adminId - Admin ID
+   * @param riskScore - Optional risk score
+   * @returns Approval result
+   */
+  async approveKYC(userId: string, adminId: string, riskScore?: number): Promise<any> {
+    const kyc = await prisma.kYC.findFirst({
+      where: { userId }
+    });
+
+    if (!kyc) throw new Error('KYC record not found');
+
+    const updated = await prisma.kYC.update({
+      where: { id: kyc.id },
+      data: {
+        status: 'APPROVED'
+      },
+      include: { user: true }
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: adminId,
+        adminId,
+        action: 'KYC_APPROVED',
+        entity: 'KYC',
+        entityId: kyc.id,
+        details: JSON.stringify({ riskScore: riskScore || 50 })
+      }
+    });
+
+    return updated;
+  }
+
+  /**
+   * Reject KYC application
+   * @param userId - User ID
+   * @param adminId - Admin ID
+   * @param reason - Rejection reason
+   * @returns Rejection result
+   */
+  async rejectKYC(userId: string, adminId: string, reason?: string): Promise<any> {
+    const kyc = await prisma.kYC.findFirst({
+      where: { userId }
+    });
+
+    if (!kyc) throw new Error('KYC record not found');
+
+    const updated = await prisma.kYC.update({
+      where: { id: kyc.id },
+      data: {
+        status: 'REJECTED'
+      },
+      include: { user: true }
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: adminId,
+        adminId,
+        action: 'KYC_REJECTED',
+        entity: 'KYC',
+        entityId: kyc.id,
+        details: JSON.stringify({ reason })
+      }
+    });
+
+    return updated;
+  }
+
+  /**
+   * Approve business registration
+   * @param businessId - Business ID
+   * @param adminId - Admin ID
+   * @returns Approval result
+   */
+  async approveBusiness(businessId: string, adminId: string): Promise<any> {
+    const business = await prisma.business.findUnique({
+      where: { id: businessId }
+    });
+
+    if (!business) throw new Error('Business not found');
+
+    const updated = await prisma.business.update({
+      where: { id: businessId },
+      data: {
+        status: 'APPROVED'
+      }
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: adminId,
+        adminId,
+        action: 'BUSINESS_APPROVED',
+        entity: 'Business',
+        entityId: businessId
+      }
+    });
+
+    return updated;
+  }
+
+  /**
+   * Reject business registration
+   * @param businessId - Business ID
+   * @param adminId - Admin ID
+   * @param reason - Rejection reason
+   * @returns Rejection result
+   */
+  async rejectBusiness(businessId: string, adminId: string, reason?: string): Promise<any> {
+    const business = await prisma.business.findUnique({
+      where: { id: businessId }
+    });
+
+    if (!business) throw new Error('Business not found');
+
+    const updated = await prisma.business.update({
+      where: { id: businessId },
+      data: {
+        status: 'REJECTED'
+      }
+    });
+
+    // Create audit log
+    await prisma.auditLog.create({
+      data: {
+        userId: adminId,
+        adminId,
+        action: 'BUSINESS_REJECTED',
+        entity: 'Business',
+        entityId: businessId,
+        details: JSON.stringify({ reason })
+      }
+    });
+
+    return updated;
+  }
 }
 
 // Export singleton instance

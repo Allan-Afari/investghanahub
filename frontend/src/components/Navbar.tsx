@@ -9,14 +9,12 @@ import {
   TrendingUp, 
   Menu, 
   X, 
-  User, 
   LogOut, 
   LayoutDashboard,
   ChevronDown,
   Shield,
   Building2,
-  Wallet,
-  Bell
+  Wallet
 } from 'lucide-react';
 import { useAuth } from '../App';
 

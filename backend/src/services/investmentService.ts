@@ -556,6 +556,86 @@ class InvestmentService {
       }
     });
   }
+
+  /**
+   * Get investor's investments (for dashboard)
+   * @param investorId - ID of the investor
+   * @param filters - Filter options
+   * @returns List of investments with stats
+   */
+  async getInvestorInvestments(investorId: string, filters: any = {}): Promise<any> {
+    const page = filters.page || 1;
+    const limit = filters.limit || 10;
+    const skip = (page - 1) * limit;
+
+    const where: any = { userId: investorId };
+    if (filters.status) {
+      where.status = filters.status;
+    }
+
+    const investments = await prisma.investment.findMany({
+      where,
+      include: {
+        opportunity: {
+          include: {
+            business: true
+          }
+        }
+      },
+      skip,
+      take: limit,
+      orderBy: { createdAt: 'desc' }
+    });
+
+    const total = await prisma.investment.count({ where });
+
+    // Format response
+    const formatted = investments.map((inv: any) => ({
+      id: inv.id,
+      businessName: inv.opportunity?.business?.name || 'Unknown',
+      amount: inv.amount,
+      investedAt: inv.createdAt,
+      status: inv.status,
+      expectedReturn: inv.expectedReturn || 0,
+      maturityDate: inv.maturityDate,
+      returnPercentage: inv.amount > 0 ? ((inv.expectedReturn || 0) / inv.amount) * 100 : 0
+    }));
+
+    return {
+      data: formatted,
+      pagination: {
+        total,
+        page,
+        limit,
+        pages: Math.ceil(total / limit)
+      }
+    };
+  }
+
+  /**
+   * Get portfolio summary (for dashboard)
+   * @param investorId - ID of the investor
+   * @returns Portfolio statistics
+   */
+  async getPortfolioSummary(investorId: string): Promise<any> {
+    const investments = await prisma.investment.findMany({
+      where: { investorId: investorId }
+    });
+
+    const totalInvested = investments.reduce((sum, inv) => sum + (inv.amount || 0), 0);
+    const totalReturns = investments.reduce((sum, inv) => sum + (inv.expectedReturn || 0), 0);
+    const activeCount = investments.filter((inv: any) => inv.status === 'ACTIVE').length;
+    const portfolioValue = totalInvested + totalReturns;
+    const roi = totalInvested > 0 ? ((totalReturns / totalInvested) * 100) : 0;
+
+    return {
+      totalInvested,
+      totalReturns,
+      activeInvestments: activeCount,
+      portfolioValue,
+      roi: parseFloat(roi.toFixed(2))
+    };
+  }
 }
 
 // Export singleton instance

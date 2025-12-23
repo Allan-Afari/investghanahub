@@ -13,13 +13,20 @@ import {
   Loader2,
   CreditCard,
   MapPin,
-  User,
   Briefcase
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../App';
 import { kycAPI } from '../utils/api';
 import FormInput from '../components/FormInput';
+
+interface ApiErrorShape {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+}
 
 // Ghana regions
 const ghanaRegions = [
@@ -161,8 +168,9 @@ export default function KYCPage() {
       toast.success('KYC submitted successfully! Awaiting admin approval.');
       fetchKYCStatus();
       setShowForm(false);
-    } catch (error: any) {
-      const message = error.response?.data?.message || 'Failed to submit KYC';
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      const message = err.response?.data?.message || 'Failed to submit KYC';
       toast.error(message);
     } finally {
       setIsSubmitting(false);

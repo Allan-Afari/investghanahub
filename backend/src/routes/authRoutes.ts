@@ -4,57 +4,40 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { body, validationResult } from 'express-validator';
 import { authService } from '../services/authService';
 import { authMiddleware } from '../middleware/authMiddleware';
+import {
+  validate,
+  registerValidationSchema,
+  loginValidationSchema,
+  validatePasswordStrength
+} from '../middleware/advancedSecurityMiddleware';
+import Joi from 'joi';
 
 const router = Router();
 
 // ===========================================
-// VALIDATION RULES
+// VALIDATION SCHEMAS
 // ===========================================
 
-const registerValidation = [
-  body('email')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Please provide a valid email address'),
-  body('password')
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain uppercase, lowercase, and number'),
-  body('firstName')
-    .trim()
-    .notEmpty()
-    .withMessage('First name is required')
-    .isLength({ max: 50 })
-    .withMessage('First name must be less than 50 characters'),
-  body('lastName')
-    .trim()
-    .notEmpty()
-    .withMessage('Last name is required')
-    .isLength({ max: 50 })
-    .withMessage('Last name must be less than 50 characters'),
-  body('phone')
-    .optional()
-    .matches(/^(\+233|0)\d{9}$/)
-    .withMessage('Please provide a valid Ghana phone number'),
-  body('role')
-    .optional()
-    .isIn(['INVESTOR', 'BUSINESS_OWNER'])
-    .withMessage('Role must be INVESTOR or BUSINESS_OWNER')
-];
+const updateProfileSchema = Joi.object({
+  firstName: Joi.string().min(2).max(50).trim().optional(),
+  lastName: Joi.string().min(2).max(50).trim().optional(),
+  phone: Joi.string().pattern(/^(\+233|0)[2-5][0-9]{8}$/).optional(),
+});
 
-const loginValidation = [
-  body('email')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Please provide a valid email address'),
-  body('password')
-    .notEmpty()
-    .withMessage('Password is required')
-];
+const changePasswordSchema = Joi.object({
+  currentPassword: Joi.string().required(),
+  newPassword: Joi.string()
+    .min(8)
+    .max(128)
+    .pattern(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)
+    .required()
+    .messages({
+      'string.pattern.base': 'New password must contain at least one uppercase letter, one lowercase letter, one number, and one special character',
+      'string.min': 'New password must be at least 8 characters long',
+    }),
+});
 
 // ===========================================
 // ROUTES
@@ -63,23 +46,14 @@ const loginValidation = [
 /**
  * POST /api/auth/register
  * Register a new user (investor or business owner)
+ * Enhanced with comprehensive validation and password strength requirements
  */
 router.post(
   '/register',
-  registerValidation,
+  validate(registerValidationSchema),
+  validatePasswordStrength,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      // Check validation errors
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: errors.array()
-        });
-        return;
-      }
-
       const { email, password, firstName, lastName, phone, role } = req.body;
 
       const result = await authService.register({
@@ -89,6 +63,14 @@ router.post(
         lastName,
         phone,
         role: role || 'INVESTOR'
+      });
+
+      // Set auth cookie (HttpOnly) for enhanced security
+      res.cookie('token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
       });
 
       res.status(201).json({
@@ -105,33 +87,133 @@ router.post(
 /**
  * POST /api/auth/login
  * Authenticate user and return JWT token
+ * Enhanced with security logging
  */
 router.post(
   '/login',
-  loginValidation,
+  validate(loginValidationSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      // Check validation errors
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: errors.array()
-        });
-        return;
-      }
-
       const { email, password } = req.body;
       const ipAddress = req.ip || req.socket.remoteAddress;
       const userAgent = req.headers['user-agent'];
 
       const result = await authService.login(email, password, ipAddress, userAgent);
 
+      // Set secure auth cookie
+      res.cookie('token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        maxAge: 1000 * 60 * 60 * 24 * 7 // 7 days
+      });
+
       res.status(200).json({
         success: true,
         message: 'Login successful',
-        data: result
+        data: {
+          user: result.user,
+          token: result.token
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/auth/register/investor
+ * Register a new investor with streamlined flow
+ */
+router.post(
+  '/register/investor',
+  validate(registerValidationSchema),
+  validatePasswordStrength,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { email, password, firstName, lastName, phone } = req.body;
+
+      const result = await authService.register({
+        email,
+        password,
+        firstName,
+        lastName,
+        phone,
+        role: 'INVESTOR'
+      });
+
+      // Set auth cookie
+      res.cookie('token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        maxAge: 1000 * 60 * 60 * 24 * 7
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Investor account created successfully. Please complete KYC verification to start investing.',
+        data: {
+          user: result.user,
+          token: result.token,
+          nextSteps: [
+            '1. Complete KYC verification',
+            '2. Browse available investment opportunities',
+            '3. Make your first investment',
+            '4. Track your portfolio'
+          ]
+        }
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/auth/register/business-owner
+ * Register a new business owner with guided capital raising flow
+ */
+router.post(
+  '/register/business-owner',
+  validate(registerValidationSchema),
+  validatePasswordStrength,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { email, password, firstName, lastName, phone } = req.body;
+
+      const result = await authService.register({
+        email,
+        password,
+        firstName,
+        lastName,
+        phone,
+        role: 'BUSINESS_OWNER'
+      });
+
+      // Set auth cookie
+      res.cookie('token', result.token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        maxAge: 1000 * 60 * 60 * 24 * 7
+      });
+
+      res.status(201).json({
+        success: true,
+        message: 'Business owner account created successfully. Next: register your business and complete KYC.',
+        data: {
+          user: result.user,
+          token: result.token,
+          nextSteps: [
+            '1. Complete personal KYC verification',
+            '2. Register your business details',
+            '3. Wait for admin business verification',
+            '4. Create investment opportunities',
+            '5. Start raising capital'
+          ]
+        }
       });
     } catch (error) {
       next(error);
@@ -164,38 +246,14 @@ router.get(
 /**
  * PUT /api/auth/profile
  * Update current user's profile (protected route)
+ * Enhanced with Joi validation
  */
 router.put(
   '/profile',
   authMiddleware,
-  [
-    body('firstName')
-      .optional()
-      .trim()
-      .isLength({ max: 50 })
-      .withMessage('First name must be less than 50 characters'),
-    body('lastName')
-      .optional()
-      .trim()
-      .isLength({ max: 50 })
-      .withMessage('Last name must be less than 50 characters'),
-    body('phone')
-      .optional()
-      .matches(/^(\+233|0)\d{9}$/)
-      .withMessage('Please provide a valid Ghana phone number')
-  ],
+  validate(updateProfileSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: errors.array()
-        });
-        return;
-      }
-
       const userId = (req as any).user.id;
       const { firstName, lastName, phone } = req.body;
 
@@ -219,32 +277,14 @@ router.put(
 /**
  * POST /api/auth/change-password
  * Change user's password (protected route)
+ * Enhanced with strong password requirements
  */
 router.post(
   '/change-password',
   authMiddleware,
-  [
-    body('currentPassword')
-      .notEmpty()
-      .withMessage('Current password is required'),
-    body('newPassword')
-      .isLength({ min: 8 })
-      .withMessage('New password must be at least 8 characters')
-      .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-      .withMessage('Password must contain uppercase, lowercase, and number')
-  ],
+  validate(changePasswordSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: errors.array()
-        });
-        return;
-      }
-
       const userId = (req as any).user.id;
       const { currentPassword, newPassword } = req.body;
 
@@ -252,11 +292,29 @@ router.post(
 
       res.status(200).json({
         success: true,
-        message: 'Password changed successfully'
+        message: 'Password changed successfully. Please login again with your new password.'
       });
     } catch (error) {
       next(error);
     }
+  }
+);
+
+/**
+ * POST /api/auth/logout
+ * Logout user and clear auth cookie
+ */
+router.post(
+  '/logout',
+  authMiddleware,
+  async (req: Request, res: Response): Promise<void> => {
+    // Clear auth cookie
+    res.clearCookie('token');
+    
+    res.status(200).json({
+      success: true,
+      message: 'Logged out successfully'
+    });
   }
 );
 

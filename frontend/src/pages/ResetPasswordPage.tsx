@@ -4,7 +4,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { TrendingUp, Loader2, Eye, EyeOff, CheckCircle2, XCircle, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 import FormInput from '../components/FormInput';
@@ -12,7 +12,6 @@ import FormInput from '../components/FormInput';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 export default function ResetPasswordPage() {
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const token = searchParams.get('token');
 

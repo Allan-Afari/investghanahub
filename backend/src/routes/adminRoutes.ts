@@ -449,5 +449,221 @@ router.post(
   }
 );
 
+// ===========================================
+// ADMIN DASHBOARD ENDPOINTS
+// ===========================================
+
+/**
+ * GET /api/admin/stats
+ * Get platform statistics for dashboard
+ */
+router.get(
+  '/stats',
+  async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const stats = await adminService.getStats();
+
+      res.status(200).json({
+        success: true,
+        data: stats
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/admin/kyc/pending
+ * Get pending KYC requests for dashboard
+ */
+router.get(
+  '/kyc/pending',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+
+      const kycRequests = await adminService.getPendingKYC({ page, limit });
+
+      res.status(200).json({
+        success: true,
+        data: kycRequests
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/admin/businesses/pending
+ * Get pending business registrations for dashboard
+ */
+router.get(
+  '/businesses/pending',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+
+      const businesses = await adminService.getPendingBusinesses({ page, limit });
+
+      res.status(200).json({
+        success: true,
+        data: businesses
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/admin/kyc/:userId/approve
+ * Approve KYC application
+ */
+router.post(
+  '/kyc/:userId/approve',
+  [
+    body('riskScore')
+      .optional()
+      .isInt({ min: 0, max: 100 })
+  ],
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array()
+        });
+        return;
+      }
+
+      const { userId } = req.params;
+      const { riskScore } = req.body;
+      const adminId = (req as any).user.id;
+
+      const result = await adminService.approveKYC(userId, adminId, riskScore);
+
+      res.status(200).json({
+        success: true,
+        message: 'KYC approved successfully',
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/admin/kyc/:userId/reject
+ * Reject KYC application
+ */
+router.post(
+  '/kyc/:userId/reject',
+  [
+    body('reason')
+      .trim()
+      .notEmpty()
+      .withMessage('Rejection reason is required')
+  ],
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array()
+        });
+        return;
+      }
+
+      const { userId } = req.params;
+      const { reason } = req.body;
+      const adminId = (req as any).user.id;
+
+      const result = await adminService.rejectKYC(userId, adminId, reason);
+
+      res.status(200).json({
+        success: true,
+        message: 'KYC rejected',
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/admin/businesses/:businessId/approve
+ * Approve business registration
+ */
+router.post(
+  '/businesses/:businessId/approve',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { businessId } = req.params;
+      const adminId = (req as any).user.id;
+
+      const result = await adminService.approveBusiness(businessId, adminId);
+
+      res.status(200).json({
+        success: true,
+        message: 'Business approved successfully',
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/admin/businesses/:businessId/reject
+ * Reject business registration
+ */
+router.post(
+  '/businesses/:businessId/reject',
+  [
+    body('reason')
+      .trim()
+      .notEmpty()
+      .withMessage('Rejection reason is required')
+  ],
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array()
+        });
+        return;
+      }
+
+      const { businessId } = req.params;
+      const { reason } = req.body;
+      const adminId = (req as any).user.id;
+
+      const result = await adminService.rejectBusiness(businessId, adminId, reason);
+
+      res.status(200).json({
+        success: true,
+        message: 'Business rejected',
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;
 

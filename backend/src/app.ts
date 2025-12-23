@@ -1,16 +1,25 @@
-/**
- * InvestGhanaHub Express Application Configuration
- * Sets up middleware, routes, and error handling
- */
-
-import express, { Application, Request, Response, NextFunction } from 'express';
+import express, { Application, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import path from 'path';
+import { env } from './config/env';
+
+// Import security middleware
+import { authLimiter, uploadLimiter, validateFileUpload } from './middleware/securityMiddleware';
+
+// Import logging middleware
+import { httpLogger } from './middleware/loggingMiddleware';
+
+// Import error middleware
+import { errorMiddleware } from './middleware/error.middleware';
 
 // Import routes
 import authRoutes from './routes/authRoutes';
 import kycRoutes from './routes/kycRoutes';
+import kycWebhookRoutes from './routes/kycWebhookRoutes';
+import kycImageVerificationRoutes from './routes/kycImageVerificationRoutes';
+import capitalRaisingRoutes from './routes/capitalRaisingRoutes';
 import businessRoutes from './routes/businessRoutes';
 import investmentRoutes from './routes/investmentRoutes';
 import adminRoutes from './routes/adminRoutes';
@@ -19,9 +28,33 @@ import walletRoutes from './routes/walletRoutes';
 import uploadRoutes from './routes/uploadRoutes';
 import otpRoutes from './routes/otpRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import bankAccountRoutes from './routes/bankAccountRoutes';
+import profitRoutes from './routes/profitRoutes';
 
 // Initialize Express application
 const app: Application = express();
+
+// ===========================================
+// MONITORING INITIALIZATION
+// ===========================================
+
+// Initialize Sentry for error tracking
+if (process.env.SENTRY_DSN) {
+  import('./services/sentryService')
+    .then(({ initializeSentry }) => initializeSentry())
+    .catch((error: unknown) => {
+      console.error('❌ Failed to initialize Sentry:', error);
+    });
+}
+
+// Initialize metrics collection
+if (process.env.ENABLE_METRICS === 'true') {
+  import('./services/metricsService')
+    .then((module) => module.default.initializeMetrics())
+    .catch((error: unknown) => {
+      console.error('❌ Failed to initialize metrics:', error);
+    });
+}
 
 // ===========================================
 // SECURITY MIDDLEWARE
@@ -30,18 +63,20 @@ const app: Application = express();
 // Helmet for security headers
 app.use(helmet());
 
-// CORS configuration - Allow all origins in development
-app.use(cors({
-  origin: true, // Allow all origins
+// CORS configuration
+const corsOptions = {
+  origin: env.NODE_ENV === 'production' ? env.FRONTEND_URL : true,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
-}));
+};
+
+app.use(cors(corsOptions));
 
 // Rate limiting to prevent abuse
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'), // 15 minutes
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || '100'),
+  windowMs: env.RATE_LIMIT_WINDOW_MS,
+  max: env.RATE_LIMIT_MAX_REQUESTS,
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.'
@@ -57,18 +92,14 @@ app.use(limiter);
 // ===========================================
 
 app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
 
 // ===========================================
-// REQUEST LOGGING (Development)
+// LOGGING MIDDLEWARE
 // ===========================================
 
-if (process.env.NODE_ENV === 'development') {
-  app.use((req: Request, _res: Response, next: NextFunction) => {
-    console.log(`📨 ${req.method} ${req.path}`);
-    next();
-  });
-}
+// Request logging
+app.use(httpLogger);
 
 // ===========================================
 // HEALTH CHECK ENDPOINT
@@ -79,7 +110,7 @@ app.get('/health', (_req: Request, res: Response) => {
     success: true,
     message: 'InvestGhanaHub API is running',
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || 'development'
+    environment: env.NODE_ENV
   });
 });
 
@@ -87,23 +118,47 @@ app.get('/health', (_req: Request, res: Response) => {
 // API ROUTES
 // ===========================================
 
-// Mount all API routes under /api prefix
-app.use('/api/auth', authRoutes);
+// Mount all API routes under /api prefix with specific rate limiting
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/capital-raising', capitalRaisingRoutes); // Capital raising registration flow
 app.use('/api/kyc', kycRoutes);
+app.use('/api/kyc', kycImageVerificationRoutes);  // Image verification routes
+app.use('/api', kycWebhookRoutes);  // Webhook routes (includes /api/webhooks/kyc/callback and /api/admin/kyc/*)
 app.use('/api/businesses', businessRoutes);
 app.use('/api/investments', investmentRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/password', passwordRoutes);
 app.use('/api/wallet', walletRoutes);
-app.use('/api/upload', uploadRoutes);
+app.use('/api/upload', uploadLimiter, validateFileUpload, uploadRoutes);
 app.use('/api/otp', otpRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/bank-accounts', bankAccountRoutes);
+app.use('/api/profits', profitRoutes);
+
+// ===========================================
+// OPTIONAL FRONTEND SERVING (PRODUCTION)
+// ===========================================
+
+const shouldServeFrontend = env.NODE_ENV === 'production' && process.env.SERVE_FRONTEND === 'true';
+if (shouldServeFrontend) {
+  const frontendDistPath = path.resolve(__dirname, '../../frontend/dist');
+  app.use(express.static(frontendDistPath));
+
+  app.get('*', (req: Request, res: Response, next) => {
+    if (req.path.startsWith('/api') || req.path === '/health') return next();
+    return res.sendFile(path.join(frontendDistPath, 'index.html'));
+  });
+}
 
 // ===========================================
 // 404 HANDLER
 // ===========================================
 
-app.use((_req: Request, res: Response) => {
+app.use((req: Request, res: Response) => {
+  if (!req.path.startsWith('/api')) {
+    res.status(404).send('Not found');
+    return;
+  }
   res.status(404).json({
     success: false,
     message: 'Endpoint not found'
@@ -114,37 +169,6 @@ app.use((_req: Request, res: Response) => {
 // GLOBAL ERROR HANDLER
 // ===========================================
 
-interface CustomError extends Error {
-  statusCode?: number;
-  code?: string;
-}
-
-app.use((err: CustomError, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('❌ Error:', err.message);
-  console.error('Stack:', err.stack);
-
-  // Handle Prisma errors
-  if (err.code === 'P2002') {
-    return res.status(400).json({
-      success: false,
-      message: 'A record with this value already exists'
-    });
-  }
-
-  if (err.code === 'P2025') {
-    return res.status(404).json({
-      success: false,
-      message: 'Record not found'
-    });
-  }
-
-  // Default error response
-  res.status(err.statusCode || 500).json({
-    success: false,
-    message: err.message || 'Internal server error',
-    ...(process.env.NODE_ENV === 'development' && { stack: err.stack })
-  });
-});
+app.use(errorMiddleware);
 
 export default app;
-

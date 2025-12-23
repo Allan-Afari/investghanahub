@@ -7,7 +7,6 @@ import { Link } from 'react-router-dom';
 import { 
   TrendingUp, 
   Shield, 
-  Users, 
   Leaf, 
   Building2, 
   Rocket,
@@ -207,12 +206,12 @@ export default function HomePage() {
               </p>
 
               <div className="space-y-8">
-                {[
+                {[ 
                   { step: '01', title: 'Create Account', desc: 'Sign up as an investor or business owner' },
                   { step: '02', title: 'Complete KYC', desc: 'Verify your identity with Ghana Card' },
                   { step: '03', title: 'Browse Opportunities', desc: 'Explore verified investment options' },
                   { step: '04', title: 'Invest & Earn', desc: 'Fund businesses and track returns' }
-                ].map((item, index) => (
+                ].map((item) => (
                   <div key={item.step} className="flex gap-6 items-start group">
                     <div className="flex-shrink-0 w-14 h-14 rounded-xl bg-dark-800 flex items-center justify-center font-display font-bold text-ghana-gold-500 group-hover:bg-ghana-gold-500 group-hover:text-dark-950 transition-all">
                       {item.step}

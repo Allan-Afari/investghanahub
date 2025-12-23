@@ -4,23 +4,10 @@
  */
 
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { PrismaClient, Role } from '@prisma/client';
-
-const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
-
-// Extend Express Request type to include user
-declare global {
-  namespace Express {
-    interface Request {
-      user?: {
-        id: string;
-        role: Role;
-      };
-    }
-  }
-}
+import { Role } from '@prisma/client';
+import { prisma } from '../config/database';
+import { verifyToken } from '../utils/jwt.util';
+import { AppError } from '../utils/error.util';
 
 /**
  * JWT Authentication Middleware
@@ -36,155 +23,90 @@ export const authMiddleware = async (
     const authHeader = req.headers.authorization;
 
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      res.status(401).json({
-        success: false,
-        message: 'Access denied. No token provided.'
-      });
+      next(AppError.unauthorized('Access denied. No token provided.'));
       return;
     }
 
     const token = authHeader.substring(7); // Remove 'Bearer ' prefix
 
     // Verify token
-    const decoded = jwt.verify(token, JWT_SECRET) as { id: string; role: Role };
+    const decoded = verifyToken(token);
 
     // Check if user exists and is active
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { id: true, role: true, isActive: true }
+      select: { id: true, role: true, email: true, isActive: true }
     });
 
     if (!user) {
-      res.status(401).json({
-        success: false,
-        message: 'Invalid token. User not found.'
-      });
+      next(AppError.unauthorized('Invalid token. User not found.'));
       return;
     }
 
     if (!user.isActive) {
-      res.status(403).json({
-        success: false,
-        message: 'Account has been deactivated. Please contact support.'
-      });
+      next(AppError.forbidden('Account has been deactivated. Please contact support.'));
       return;
     }
 
     // Attach user to request
     req.user = {
       id: user.id,
-      role: user.role
+      role: user.role,
+      email: user.email
     };
 
     next();
   } catch (error: any) {
-    if (error.name === 'TokenExpiredError') {
-      res.status(401).json({
-        success: false,
-        message: 'Token has expired. Please login again.'
-      });
+    if (error.message?.includes('expired')) {
+      next(AppError.unauthorized('Token has expired. Please login again.'));
       return;
     }
 
-    if (error.name === 'JsonWebTokenError') {
-      res.status(401).json({
-        success: false,
-        message: 'Invalid token.'
-      });
+    if (error.message?.includes('Invalid token')) {
+      next(AppError.unauthorized('Invalid token.'));
       return;
     }
 
-    console.error('Auth middleware error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Authentication error'
-    });
+    next(AppError.unauthorized('Authentication error'));
   }
+};
+
+/**
+ * Require specific roles
+ */
+export const requireRole = (...roles: Role[]) => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      next(AppError.unauthorized('Authentication required'));
+      return;
+    }
+
+    if (!roles.includes(req.user.role)) {
+      next(AppError.forbidden('Insufficient permissions'));
+      return;
+    }
+
+    next();
+  };
 };
 
 /**
  * Admin Role Middleware
  * Ensures user has ADMIN role
  */
-export const adminMiddleware = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
-  if (!req.user) {
-    res.status(401).json({
-      success: false,
-      message: 'Authentication required'
-    });
-    return;
-  }
-
-  if (req.user.role !== 'ADMIN') {
-    res.status(403).json({
-      success: false,
-      message: 'Access denied. Admin privileges required.'
-    });
-    return;
-  }
-
-  next();
-};
+export const adminMiddleware = requireRole('ADMIN');
 
 /**
  * Business Owner Role Middleware
- * Ensures user has BUSINESS_OWNER role
+ * Ensures user has BUSINESS_OWNER or ADMIN role
  */
-export const businessOwnerMiddleware = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
-  if (!req.user) {
-    res.status(401).json({
-      success: false,
-      message: 'Authentication required'
-    });
-    return;
-  }
-
-  if (req.user.role !== 'BUSINESS_OWNER' && req.user.role !== 'ADMIN') {
-    res.status(403).json({
-      success: false,
-      message: 'Access denied. Business owner privileges required.'
-    });
-    return;
-  }
-
-  next();
-};
+export const businessOwnerMiddleware = requireRole('BUSINESS_OWNER', 'ADMIN');
 
 /**
  * Investor Role Middleware
- * Ensures user has INVESTOR role
+ * Ensures user has INVESTOR or ADMIN role
  */
-export const investorMiddleware = (
-  req: Request,
-  res: Response,
-  next: NextFunction
-): void => {
-  if (!req.user) {
-    res.status(401).json({
-      success: false,
-      message: 'Authentication required'
-    });
-    return;
-  }
-
-  if (req.user.role !== 'INVESTOR' && req.user.role !== 'ADMIN') {
-    res.status(403).json({
-      success: false,
-      message: 'Access denied. Investor privileges required.'
-    });
-    return;
-  }
-
-  next();
-};
+export const investorMiddleware = requireRole('INVESTOR', 'ADMIN');
 
 /**
  * KYC Verification Middleware

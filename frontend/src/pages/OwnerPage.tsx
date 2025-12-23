@@ -14,14 +14,19 @@ import {
   XCircle,
   TrendingUp,
   Users,
-  AlertCircle,
-  ChevronRight
+  AlertCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuth } from '../App';
 import { businessAPI, kycAPI } from '../utils/api';
 import FormInput from '../components/FormInput';
-import DashboardTable from '../components/DashboardTable';
+
+interface ApiErrorShape {
+  response?: {
+    data?: {
+      message?: string;
+    };
+  };
+}
 
 // Ghana regions
 const ghanaRegions = [
@@ -42,13 +47,21 @@ interface Business {
   currentAmount: number;
   status: string;
   rejectionReason: string | null;
-  opportunities: any[];
+  opportunities: BusinessOpportunity[];
   _count: { opportunities: number };
+}
+
+interface BusinessOpportunity {
+  id: string;
+  title: string;
+  status: string;
+  expectedReturn: number;
+  currentAmount?: number | null;
+  targetAmount?: number | null;
 }
 
 export default function OwnerPage() {
   const navigate = useNavigate();
-  const { user } = useAuth();
   
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -188,8 +201,9 @@ export default function OwnerPage() {
         region: '', registrationNumber: '', targetAmount: ''
       });
       fetchData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to create business');
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      toast.error(err.response?.data?.message || 'Failed to create business');
     } finally {
       setIsSubmittingBusiness(false);
     }
@@ -223,8 +237,9 @@ export default function OwnerPage() {
         startDate: '', endDate: ''
       });
       fetchData();
-    } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Failed to create opportunity');
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      toast.error(err.response?.data?.message || 'Failed to create opportunity');
     } finally {
       setIsSubmittingOpportunity(false);
     }
@@ -389,7 +404,7 @@ export default function OwnerPage() {
                     <div className="pt-4 border-t border-dark-700">
                       <h4 className="text-sm font-medium text-dark-400 mb-3">Investment Opportunities</h4>
                       <div className="grid gap-3">
-                        {business.opportunities.map((opp: any) => (
+                        {business.opportunities.map((opp: BusinessOpportunity) => (
                           <div key={opp.id} className="flex items-center justify-between p-3 bg-dark-800/50 rounded-lg">
                             <div>
                               <p className="font-medium">{opp.title}</p>

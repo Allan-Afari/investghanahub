@@ -4,22 +4,23 @@
  */
 
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext, lazy, Suspense } from 'react';
 
 // Pages
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import KYCPage from './pages/KYCPage';
-import InvestorPage from './pages/InvestorPage';
-import OwnerPage from './pages/OwnerPage';
-import AdminPage from './pages/AdminPage';
-import WalletPage from './pages/WalletPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
-import TermsPage from './pages/TermsPage';
-import PrivacyPage from './pages/PrivacyPage';
-import NotificationsPage from './pages/NotificationsPage';
+
+const KYCPage = lazy(() => import('./pages/KYCPage'));
+const InvestorPage = lazy(() => import('./pages/InvestorPage'));
+const OwnerPage = lazy(() => import('./pages/OwnerPage'));
+const AdminPage = lazy(() => import('./pages/AdminPage'));
+const WalletPage = lazy(() => import('./pages/WalletPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
+const PrivacyPage = lazy(() => import('./pages/PrivacyPage'));
+const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 
 // Components
 import Navbar from './components/Navbar';
@@ -83,6 +84,14 @@ function App() {
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const routeFallback = (
+    <div className="min-h-screen bg-dark-950 flex items-center justify-center">
+      <div className="animate-pulse-slow">
+        <div className="w-16 h-16 border-4 border-ghana-gold-500 border-t-transparent rounded-full animate-spin"></div>
+      </div>
+    </div>
+  );
+
   // Check for stored auth on mount
   useEffect(() => {
     const storedToken = localStorage.getItem('token');
@@ -139,93 +148,95 @@ function App() {
       <div className="min-h-screen bg-dark-950 text-dark-50">
         <Navbar />
         <main>
-          <Routes>
-            {/* Public Routes */}
-            <Route path="/" element={<HomePage />} />
-            <Route 
-              path="/login" 
-              element={
-                user ? (
-                  <Navigate to={
-                    user.role === 'ADMIN' ? '/admin' : 
-                    user.role === 'BUSINESS_OWNER' ? '/owner' : '/investor'
-                  } replace />
-                ) : (
-                  <LoginPage />
-                )
-              } 
-            />
-            <Route 
-              path="/register" 
-              element={
-                user ? (
-                  <Navigate to={
-                    user.role === 'ADMIN' ? '/admin' : 
-                    user.role === 'BUSINESS_OWNER' ? '/owner' : '/investor'
-                  } replace />
-                ) : (
-                  <RegisterPage />
-                )
-              } 
-            />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/terms" element={<TermsPage />} />
-            <Route path="/privacy" element={<PrivacyPage />} />
+          <Suspense fallback={routeFallback}>
+            <Routes>
+              {/* Public Routes */}
+              <Route path="/" element={<HomePage />} />
+              <Route 
+                path="/login" 
+                element={
+                  user ? (
+                    <Navigate to={
+                      user.role === 'ADMIN' ? '/admin' : 
+                      user.role === 'BUSINESS_OWNER' ? '/owner' : '/investor'
+                    } replace />
+                  ) : (
+                    <LoginPage />
+                  )
+                } 
+              />
+              <Route 
+                path="/register" 
+                element={
+                  user ? (
+                    <Navigate to={
+                      user.role === 'ADMIN' ? '/admin' : 
+                      user.role === 'BUSINESS_OWNER' ? '/owner' : '/investor'
+                    } replace />
+                  ) : (
+                    <RegisterPage />
+                  )
+                } 
+              />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/terms" element={<TermsPage />} />
+              <Route path="/privacy" element={<PrivacyPage />} />
 
-            {/* Protected Routes */}
-            <Route
-              path="/kyc"
-              element={
-                <ProtectedRoute>
-                  <KYCPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/investor"
-              element={
-                <ProtectedRoute allowedRoles={['INVESTOR', 'ADMIN']}>
-                  <InvestorPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/owner"
-              element={
-                <ProtectedRoute allowedRoles={['BUSINESS_OWNER', 'ADMIN']}>
-                  <OwnerPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <ProtectedRoute allowedRoles={['ADMIN']}>
-                  <AdminPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/wallet"
-              element={
-                <ProtectedRoute>
-                  <WalletPage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/notifications"
-              element={
-                <ProtectedRoute>
-                  <NotificationsPage />
-                </ProtectedRoute>
-              }
-            />
+              {/* Protected Routes */}
+              <Route
+                path="/kyc"
+                element={
+                  <ProtectedRoute>
+                    <KYCPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/investor"
+                element={
+                  <ProtectedRoute allowedRoles={['INVESTOR', 'ADMIN']}>
+                    <InvestorPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/owner"
+                element={
+                  <ProtectedRoute allowedRoles={['BUSINESS_OWNER', 'ADMIN']}>
+                    <OwnerPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute allowedRoles={['ADMIN']}>
+                    <AdminPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/wallet"
+                element={
+                  <ProtectedRoute>
+                    <WalletPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/notifications"
+                element={
+                  <ProtectedRoute>
+                    <NotificationsPage />
+                  </ProtectedRoute>
+                }
+              />
 
-            {/* Catch all - redirect to home */}
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
+              {/* Catch all - redirect to home */}
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </Suspense>
         </main>
       </div>
     </AuthContext.Provider>

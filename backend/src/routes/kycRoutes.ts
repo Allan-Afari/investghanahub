@@ -4,65 +4,27 @@
  */
 
 import { Router, Request, Response, NextFunction } from 'express';
-import { body, validationResult } from 'express-validator';
 import { kycService } from '../services/kycService';
 import { authMiddleware, adminMiddleware } from '../middleware/authMiddleware';
+import {
+  validate,
+  kycValidationSchema
+} from '../middleware/advancedSecurityMiddleware';
+import Joi from 'joi';
 
 const router = Router();
 
 // ===========================================
-// VALIDATION RULES
+// VALIDATION SCHEMAS
 // ===========================================
 
-const kycSubmitValidation = [
-  body('ghanaCardNumber')
-    .trim()
-    .notEmpty()
-    .withMessage('Ghana Card number is required')
-    .matches(/^GHA-\d{9}-\d$/)
-    .withMessage('Invalid Ghana Card format. Use GHA-XXXXXXXXX-X'),
-  body('dateOfBirth')
-    .isISO8601()
-    .withMessage('Valid date of birth is required (YYYY-MM-DD)')
-    .custom((value) => {
-      const birthDate = new Date(value);
-      const age = Math.floor((Date.now() - birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
-      if (age < 18) {
-        throw new Error('You must be at least 18 years old');
-      }
-      return true;
-    }),
-  body('address')
-    .trim()
-    .notEmpty()
-    .withMessage('Address is required')
-    .isLength({ max: 200 })
-    .withMessage('Address must be less than 200 characters'),
-  body('city')
-    .trim()
-    .notEmpty()
-    .withMessage('City is required'),
-  body('region')
-    .trim()
-    .notEmpty()
-    .withMessage('Region is required')
-    .isIn([
-      'Greater Accra', 'Ashanti', 'Western', 'Eastern', 'Central',
-      'Northern', 'Upper East', 'Upper West', 'Volta', 'Bono',
-      'Bono East', 'Ahafo', 'Western North', 'Oti', 'North East', 'Savannah'
-    ])
-    .withMessage('Invalid Ghana region'),
-  body('occupation')
-    .optional()
-    .trim()
-    .isLength({ max: 100 })
-    .withMessage('Occupation must be less than 100 characters'),
-  body('sourceOfFunds')
-    .optional()
-    .trim()
-    .isLength({ max: 200 })
-    .withMessage('Source of funds must be less than 200 characters')
-];
+const kycRejectSchema = Joi.object({
+  reason: Joi.string().min(10).max(500).required().messages({
+    'string.min': 'Rejection reason must be at least 10 characters',
+    'string.max': 'Rejection reason must not exceed 500 characters',
+    'any.required': 'Rejection reason is required',
+  }),
+});
 
 // ===========================================
 // USER ROUTES
@@ -71,23 +33,14 @@ const kycSubmitValidation = [
 /**
  * POST /api/kyc/submit
  * Submit KYC information for verification
+ * Enhanced with comprehensive Ghana-specific validation
  */
 router.post(
   '/submit',
   authMiddleware,
-  kycSubmitValidation,
+  validate(kycValidationSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: errors.array()
-        });
-        return;
-      }
-
       const userId = (req as any).user.id;
       const kycData = req.body;
       const ipAddress = req.ip || req.socket.remoteAddress;
@@ -130,23 +83,14 @@ router.get(
 /**
  * PUT /api/kyc/update
  * Update KYC information (only if status is REJECTED or PENDING)
+ * Enhanced with comprehensive validation
  */
 router.put(
   '/update',
   authMiddleware,
-  kycSubmitValidation,
+  validate(kycValidationSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: errors.array()
-        });
-        return;
-      }
-
       const userId = (req as any).user.id;
       const kycData = req.body;
 
@@ -154,7 +98,7 @@ router.put(
 
       res.status(200).json({
         success: true,
-        message: 'KYC updated successfully',
+        message: 'KYC updated successfully. Awaiting admin review.',
         data: result
       });
     } catch (error) {
@@ -241,31 +185,15 @@ router.post(
 /**
  * POST /api/kyc/:id/reject
  * Reject KYC submission (admin only)
+ * Enhanced with validation
  */
 router.post(
   '/:id/reject',
   authMiddleware,
   adminMiddleware,
-  [
-    body('reason')
-      .trim()
-      .notEmpty()
-      .withMessage('Rejection reason is required')
-      .isLength({ max: 500 })
-      .withMessage('Reason must be less than 500 characters')
-  ],
+  validate(kycRejectSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        res.status(400).json({
-          success: false,
-          message: 'Validation failed',
-          errors: errors.array()
-        });
-        return;
-      }
-
       const { id } = req.params;
       const { reason } = req.body;
       const adminId = (req as any).user.id;
@@ -274,7 +202,7 @@ router.post(
 
       res.status(200).json({
         success: true,
-        message: 'KYC rejected',
+        message: 'KYC rejected. User will be notified.',
         data: result
       });
     } catch (error) {

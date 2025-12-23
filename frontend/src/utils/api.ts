@@ -16,6 +16,7 @@ const api: AxiosInstance = axios.create({
     'Content-Type': 'application/json',
   },
   timeout: 10000,
+  withCredentials: true, // Enable cookies for authentication
 });
 
 // Request interceptor - add auth token
@@ -49,7 +50,7 @@ api.interceptors.response.use(
       toast.error(message);
     } else if (error.response?.status === 429) {
       toast.error('Too many requests. Please wait a moment.');
-    } else if (error.response?.status >= 500) {
+    } else if ((error.response?.status ?? 0) >= 500) {
       toast.error('Server error. Please try again later.');
     }
 
@@ -62,6 +63,7 @@ api.interceptors.response.use(
 // ===========================================
 
 export const authAPI = {
+  // Generic register (still works for backward compatibility)
   register: async (data: {
     email: string;
     password: string;
@@ -71,6 +73,30 @@ export const authAPI = {
     role?: 'INVESTOR' | 'BUSINESS_OWNER';
   }) => {
     const response = await api.post('/auth/register', data);
+    return response.data;
+  },
+
+  // Dedicated investor registration
+  registerInvestor: async (data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+  }) => {
+    const response = await api.post('/auth/register/investor', data);
+    return response.data;
+  },
+
+  // Dedicated business owner registration
+  registerBusinessOwner: async (data: {
+    email: string;
+    password: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+  }) => {
+    const response = await api.post('/auth/register/business-owner', data);
     return response.data;
   },
 
@@ -131,6 +157,17 @@ export const kycAPI = {
     return response.data;
   },
 
+  // New KYC Provider endpoints
+  initiate: async (data: { ghanaCardNumber: string; firstName: string; lastName: string; dateOfBirth?: string; phoneNumber?: string }) => {
+    const response = await api.post('/kyc/initiate', data);
+    return response.data;
+  },
+
+  checkStatus: async () => {
+    const response = await api.get('/kyc/status');
+    return response.data;
+  },
+
   // Admin endpoints
   getPending: async () => {
     const response = await api.get('/kyc/pending');
@@ -183,6 +220,16 @@ export const businessAPI = {
 
   getMyBusinesses: async () => {
     const response = await api.get('/businesses/my/list');
+    return response.data;
+  },
+
+  getBusinessInfo: async () => {
+    const response = await api.get('/businesses/my/info');
+    return response.data;
+  },
+
+  getMyOpportunities: async (params?: { status?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/businesses/my/opportunities', { params });
     return response.data;
   },
 
@@ -264,6 +311,11 @@ export const investmentAPI = {
     return response.data;
   },
 
+  getMyInvestments: async (params?: { status?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/investments/my-investments', { params });
+    return response.data;
+  },
+
   getHistory: async (params?: { status?: string; page?: number; limit?: number }) => {
     const response = await api.get('/investments/history', { params });
     return response.data;
@@ -295,6 +347,11 @@ export const adminAPI = {
     return response.data;
   },
 
+  getStats: async () => {
+    const response = await api.get('/admin/stats');
+    return response.data;
+  },
+
   listUsers: async (params?: { role?: string; isActive?: boolean; page?: number; limit?: number }) => {
     const response = await api.get('/admin/users', { params });
     return response.data;
@@ -307,6 +364,48 @@ export const adminAPI = {
 
   updateUserStatus: async (id: string, isActive: boolean) => {
     const response = await api.patch(`/admin/users/${id}/status`, { isActive });
+    return response.data;
+  },
+
+  // KYC Admin endpoints
+  getKYCStats: async () => {
+    const response = await api.get('/admin/kyc/stats');
+    return response.data;
+  },
+
+  getPendingKYC: async (params?: { page?: number; limit?: number }) => {
+    const response = await api.get('/admin/kyc/pending', { params });
+    return response.data;
+  },
+
+  getKYCUsers: async (params?: { status?: string; page?: number; limit?: number }) => {
+    const response = await api.get('/admin/kyc/users', { params });
+    return response.data;
+  },
+
+  approveKYC: async (userId: string, riskScore?: number) => {
+    const response = await api.post(`/admin/kyc/${userId}/approve`, { riskScore });
+    return response.data;
+  },
+
+  rejectKYC: async (userId: string, reason?: string) => {
+    const response = await api.post(`/admin/kyc/${userId}/reject`, { reason });
+    return response.data;
+  },
+
+  // Business Admin endpoints
+  getPendingBusinesses: async (params?: { page?: number; limit?: number }) => {
+    const response = await api.get('/admin/businesses/pending', { params });
+    return response.data;
+  },
+
+  approveBusiness: async (businessId: string) => {
+    const response = await api.post(`/admin/businesses/${businessId}/approve`);
+    return response.data;
+  },
+
+  rejectBusiness: async (businessId: string, reason?: string) => {
+    const response = await api.post(`/admin/businesses/${businessId}/reject`, { reason });
     return response.data;
   },
 

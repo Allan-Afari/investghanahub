@@ -302,5 +302,57 @@ router.get(
   }
 );
 
+/**
+ * GET /api/investments/my-investments
+ * Get all investments for the logged-in investor (dashboard endpoint)
+ */
+router.get(
+  '/my-investments',
+  authMiddleware,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const investorId = (req as any).user.id;
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 10;
+      const status = req.query.status as string;
+
+      const investments = await investmentService.getInvestorInvestments(investorId, {
+        page,
+        limit,
+        status
+      });
+
+      res.status(200).json({
+        success: true,
+        data: investments
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/investments/portfolio
+ * Get portfolio summary for the investor (dashboard endpoint)
+ */
+router.get(
+  '/portfolio',
+  authMiddleware,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const investorId = (req as any).user.id;
+      const portfolio = await investmentService.getPortfolioSummary(investorId);
+
+      res.status(200).json({
+        success: true,
+        data: portfolio
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;
 

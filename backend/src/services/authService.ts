@@ -242,8 +242,8 @@ class AuthService {
   private generateToken(userId: string, role: Role): string {
     return jwt.sign(
       { id: userId, role },
-      JWT_SECRET,
-      { expiresIn: JWT_EXPIRES_IN }
+      JWT_SECRET as unknown as jwt.Secret,
+      { expiresIn: JWT_EXPIRES_IN } as jwt.SignOptions
     );
   }
 
@@ -284,17 +284,22 @@ class AuthService {
     ipAddress?: string,
     userAgent?: string
   ): Promise<void> {
-    await prisma.auditLog.create({
-      data: {
-        userId,
-        action,
-        entity,
-        entityId,
-        details,
-        ipAddress,
-        userAgent
-      }
-    });
+    try {
+      await prisma.auditLog.create({
+        data: {
+          userId,
+          action,
+          entity,
+          entityId,
+          details,
+          ipAddress,
+          userAgent
+        }
+      });
+    } catch (error) {
+      // Log but don't throw - audit logging should not break the main flow
+      console.warn('⚠️ Failed to create audit log:', error);
+    }
   }
 }
 

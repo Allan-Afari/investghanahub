@@ -293,6 +293,66 @@ const emailTemplates = {
       </div>
     `
   }),
+
+  // Profit Distribution email
+  profitDistribution: (firstName: string, profitAmount: number, totalAmount: number) => ({
+    subject: '💰 Your Investment Profit Has Been Distributed!',
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #0f172a; color: #f8fafc; padding: 40px; border-radius: 16px;">
+        <div style="text-align: center; margin-bottom: 30px;">
+          <h1 style="color: #fbbf24; margin: 0;">InvestGhanaHub</h1>
+        </div>
+        
+        <div style="text-align: center; margin-bottom: 20px;">
+          <div style="width: 80px; height: 80px; background: #22c55e20; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;">
+            <span style="font-size: 40px;">💰</span>
+          </div>
+        </div>
+        
+        <h2 style="color: #22c55e; text-align: center;">Profit Distributed!</h2>
+        
+        <p style="color: #cbd5e1; line-height: 1.6; text-align: center;">
+          Great news ${firstName}! Your investment has matured and your profit has been distributed to your wallet.
+        </p>
+        
+        <div style="background: #1e293b; padding: 20px; border-radius: 12px; margin: 20px 0;">
+          <table style="width: 100%; color: #cbd5e1;">
+            <tr>
+              <td style="padding: 12px 0; color: #94a3b8;">Profit Earned:</td>
+              <td style="padding: 12px 0; text-align: right; font-weight: bold; color: #22c55e;">₵${profitAmount.toLocaleString()}</td>
+            </tr>
+            <tr style="border-top: 1px solid #334155;">
+              <td style="padding: 12px 0; color: #94a3b8;">Total Amount:</td>
+              <td style="padding: 12px 0; text-align: right; font-weight: bold; color: #fbbf24;">₵${totalAmount.toLocaleString()}</td>
+            </tr>
+          </table>
+        </div>
+        
+        <p style="color: #cbd5e1; text-align: center; line-height: 1.6;">
+          Your profit is now available in your wallet. You can use it to:
+        </p>
+        
+        <ul style="color: #cbd5e1; line-height: 1.8;">
+          <li>Make new investments</li>
+          <li>Withdraw to your mobile money account</li>
+          <li>Keep earning more returns</li>
+        </ul>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${process.env.FRONTEND_URL}/investor" style="background: linear-gradient(to right, #22c55e, #16a34a); color: white; padding: 14px 28px; border-radius: 12px; text-decoration: none; font-weight: bold; display: inline-block;">
+            View Wallet
+          </a>
+        </div>
+        
+        <hr style="border: none; border-top: 1px solid #334155; margin: 30px 0;">
+        
+        <p style="color: #64748b; font-size: 12px; text-align: center;">
+          InvestGhanaHub - Invest in Ghana's Future<br>
+          Thank you for investing with us!
+        </p>
+      </div>
+    `
+  }),
 };
 
 /**
@@ -442,6 +502,31 @@ class EmailService {
       return true;
     } catch (error) {
       console.error('Failed to send OTP email:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Send profit distribution email
+   */
+  async sendProfitDistributionEmail(
+    email: string,
+    firstName: string,
+    profitAmount: number,
+    totalAmount: number
+  ): Promise<boolean> {
+    try {
+      const template = emailTemplates.profitDistribution(firstName, profitAmount, totalAmount);
+      await transporter.sendMail({
+        from: `"InvestGhanaHub" <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: template.subject,
+        html: template.html,
+      });
+      console.log(`✉️ Profit distribution email sent to ${email}`);
+      return true;
+    } catch (error) {
+      console.error('Failed to send profit distribution email:', error);
       return false;
     }
   }
