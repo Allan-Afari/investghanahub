@@ -487,8 +487,23 @@ export const investmentAPI = {
     return response.data;
   },
 
-  invest: async (opportunityId: string, amount: number) => {
-    const response = await api.post('/investments/invest', { opportunityId, amount });
+  // Create a draft agreement for an intended investment
+  previewAgreement: async (opportunityId: string, amount: number) => {
+    const response = await api.post('/investments/agreements/preview', {
+      opportunityId,
+      amount,
+    });
+    return response.data;
+  },
+
+  // Accept a previously created draft agreement
+  acceptAgreement: async (agreementId: string) => {
+    const response = await api.post(`/investments/agreements/${agreementId}/accept`);
+    return response.data;
+  },
+
+  invest: async (opportunityId: string, amount: number, agreementId: string) => {
+    const response = await api.post('/investments/invest', { opportunityId, amount, agreementId });
     return response.data;
   },
 

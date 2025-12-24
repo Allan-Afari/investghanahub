@@ -5,10 +5,10 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  TrendingUp, 
-  Wallet, 
-  PieChart, 
+import {
+  TrendingUp,
+  Wallet,
+  PieChart,
   Clock,
   ArrowUpRight,
   Loader2,
@@ -92,19 +92,19 @@ interface InvestmentHistoryItem {
 export default function InvestorPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+
   const [activeTab, setActiveTab] = useState<InvestorTab>('opportunities');
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [investments, setInvestments] = useState<InvestmentHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [kycStatus, setKycStatus] = useState<string>('');
-  
+
   // Filters
   const [categoryFilter, setCategoryFilter] = useState('');
   const [riskFilter, setRiskFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
-  
+
   // Investment modal
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [investAmount, setInvestAmount] = useState('');
@@ -166,7 +166,19 @@ export default function InvestorPage() {
 
     setIsInvesting(true);
     try {
-      await investmentAPI.invest(selectedOpportunity.id, amount);
+      // 1) Create a draft agreement for this investment
+      const preview = await investmentAPI.previewAgreement(selectedOpportunity.id, amount);
+      const agreementId: string | undefined = preview?.data?.agreementId;
+
+      if (!agreementId) {
+        throw new Error('Failed to generate investment agreement');
+      }
+
+      // 2) Accept the agreement (auto-accept for now)
+      await investmentAPI.acceptAgreement(agreementId);
+
+      // 3) Make the investment with the accepted agreement
+      await investmentAPI.invest(selectedOpportunity.id, amount, agreementId);
       toast.success('Investment successful!');
       setSelectedOpportunity(null);
       setInvestAmount('');
@@ -202,8 +214,8 @@ export default function InvestorPage() {
 
   // Filter opportunities
   const filteredOpportunities = opportunities.filter(opp => {
-    if (searchQuery && !opp.title.toLowerCase().includes(searchQuery.toLowerCase()) && 
-        !opp.business.name.toLowerCase().includes(searchQuery.toLowerCase())) {
+    if (searchQuery && !opp.title.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !opp.business.name.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
     return true;
@@ -212,13 +224,13 @@ export default function InvestorPage() {
   // KYC warning banner
   const KYCWarning = () => {
     if (kycStatus === 'APPROVED') return null;
-    
+
     return (
       <div className="mb-6 p-4 bg-ghana-gold-500/10 border border-ghana-gold-500/30 rounded-xl flex items-center gap-4">
         <AlertCircle className="w-6 h-6 text-ghana-gold-500 flex-shrink-0" />
         <div className="flex-1">
           <p className="text-ghana-gold-400 font-medium">
-            {kycStatus === 'PENDING' 
+            {kycStatus === 'PENDING'
               ? 'Your KYC is pending approval'
               : 'Complete KYC verification to start investing'}
           </p>
@@ -262,11 +274,10 @@ export default function InvestorPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-all ${
-                activeTab === tab.id
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-all ${activeTab === tab.id
                   ? 'bg-ghana-gold-500 text-dark-950 font-medium'
                   : 'text-dark-400 hover:bg-dark-800'
-              }`}
+                }`}
             >
               <tab.icon className="w-4 h-4" />
               {tab.label}
