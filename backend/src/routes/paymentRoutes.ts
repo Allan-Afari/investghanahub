@@ -23,6 +23,7 @@ const transferSchema = Joi.object({
   account_name: Joi.string().required(),
   amount: Joi.number().min(100).required(),
   reason: Joi.string().optional(),
+  withdrawalReference: Joi.string().optional(),
 });
 
 const bankAccountValidationSchema = Joi.object({
@@ -98,11 +99,30 @@ router.post(
           break;
         }
 
-        case 'transfer.success':
-        case 'transfer.failed':
-          // Transfer handling will be implemented when withdrawal transfers are wired end-to-end.
-          console.log('Transfer webhook:', event, parsedBody.data);
+        case 'transfer.success': {
+          const tx = parsedBody.data;
+          const ref = (tx && (tx.reference || tx.transfer_code)) as string | undefined;
+          if (ref) {
+            try {
+              await paymentService.markWithdrawalSuccess(ref);
+            } catch (e) {
+              console.error('Webhook transfer.success processing error:', e);
+            }
+          }
           break;
+        }
+        case 'transfer.failed': {
+          const tx = parsedBody.data;
+          const ref = (tx && (tx.reference || tx.transfer_code)) as string | undefined;
+          if (ref) {
+            try {
+              await paymentService.markWithdrawalFailed(ref);
+            } catch (e) {
+              console.error('Webhook transfer.failed processing error:', e);
+            }
+          }
+          break;
+        }
 
         default:
           console.log('Unhandled webhook event:', event);
@@ -212,7 +232,7 @@ router.post(
         return;
       }
 
-      const { account_number, bank_code, account_name, amount, reason } = req.body;
+      const { account_number, bank_code, account_name, amount, reason, withdrawalReference } = req.body;
       const userId = (req as any).user.id;
 
       // TODO: Check user wallet balance before transfer
@@ -228,12 +248,19 @@ router.post(
           bank_code,
         },
         reason: reason || 'Investment withdrawal',
+        reference: withdrawalReference, // Link transfer to an existing withdrawal if provided
       });
 
       if (result.success) {
-        // TODO: Create transfer record
-        // TODO: Send withdrawal confirmation email
-        
+        // If this transfer corresponds to a recorded withdrawal, we can immediately mark as SUCCESS
+        if (withdrawalReference) {
+          try {
+            await paymentService.markWithdrawalSuccess(withdrawalReference);
+          } catch (e) {
+            console.warn('Could not mark withdrawal success immediately, will rely on webhook:', e);
+          }
+        }
+
         res.status(200).json({
           success: true,
           message: 'Transfer initiated successfully',

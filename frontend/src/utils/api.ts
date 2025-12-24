@@ -92,6 +92,19 @@ api.interceptors.response.use(
     if (remaining && parseInt(remaining) < 10) {
       console.warn(`API Rate Limit Warning: ${remaining} requests remaining`);
     }
+    // Capture deposit reference for manual verification fallback
+    try {
+      const url = (response.config as any)?.url as string | undefined;
+      const data = (response as any)?.data;
+      if (
+        url && url.includes('/wallet/deposit') &&
+        data && data.success && data.data && data.data.reference
+      ) {
+        localStorage.setItem('lastDepositReference', data.data.reference as string);
+      }
+    } catch {
+      // no-op
+    }
     return response;
   },
   async (error: AxiosError) => {

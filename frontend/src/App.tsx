@@ -25,6 +25,7 @@ const NotificationsPage = lazy(() => import('./pages/NotificationsPage'));
 
 // Components
 import Navbar from './components/Navbar';
+import PaymentVerifyBanner from './components/PaymentVerifyBanner';
 
 // Types
 interface User {
@@ -150,6 +151,7 @@ function App() {
       <div className="min-h-screen bg-dark-950 text-dark-50">
         <Navbar />
         <main>
+          <PaymentVerifyBanner />
           <Suspense fallback={routeFallback}>
             <Routes>
               {/* Public Routes */}
