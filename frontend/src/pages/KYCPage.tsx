@@ -5,11 +5,11 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Shield, 
-  CheckCircle2, 
-  AlertCircle, 
-  Clock, 
+import {
+  Shield,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
   Loader2,
   CreditCard,
   MapPin,
@@ -53,20 +53,33 @@ interface KYCStatus {
 export default function KYCPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+
   const [kycStatus, setKycStatus] = useState<KYCStatus | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  
+
   const [formData, setFormData] = useState({
-    ghanaCardNumber: '',
+    firstName: '',
+    lastName: '',
     dateOfBirth: '',
+    gender: '',
+    nationality: 'Ghanaian',
+    ghanaCardNumber: '',
     address: '',
     city: '',
     region: '',
+    postalCode: '',
+    phone: '',
+    idType: 'NATIONAL_ID',
+    idNumber: '',
     occupation: '',
-    sourceOfFunds: ''
+    sourceOfFunds: '',
+    annualIncome: '',
+    taxId: '',
+    politicallyExposed: false,
+    termsAccepted: false,
+    privacyAccepted: false
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -79,18 +92,31 @@ export default function KYCPage() {
     try {
       const response = await kycAPI.getStatus();
       setKycStatus(response.data);
-      
+
       // Pre-fill form if KYC exists and is rejected/pending
       if (response.data.details && response.data.status !== 'APPROVED') {
         const d = response.data.details;
         setFormData({
+          firstName: user?.firstName || '',
+          lastName: user?.lastName || '',
           ghanaCardNumber: '', // Don't pre-fill for security
           dateOfBirth: d.dateOfBirth ? new Date(d.dateOfBirth).toISOString().split('T')[0] : '',
+          gender: '',
+          nationality: 'Ghanaian',
           address: d.address || '',
           city: d.city || '',
           region: d.region || '',
+          postalCode: '',
+          phone: user?.phone || '',
+          idType: 'NATIONAL_ID',
+          idNumber: '',
           occupation: d.occupation || '',
-          sourceOfFunds: d.sourceOfFunds || ''
+          sourceOfFunds: d.sourceOfFunds || '',
+          annualIncome: '',
+          taxId: '',
+          politicallyExposed: false,
+          termsAccepted: false,
+          privacyAccepted: false
         });
       }
     } catch (error) {
@@ -113,10 +139,12 @@ export default function KYCPage() {
   const validateForm = (): boolean => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.ghanaCardNumber) {
-      newErrors.ghanaCardNumber = 'Ghana Card number is required';
-    } else if (!/^GHA-\d{9}-\d$/.test(formData.ghanaCardNumber.toUpperCase())) {
-      newErrors.ghanaCardNumber = 'Invalid format. Use GHA-XXXXXXXXX-X';
+    if (!formData.firstName) {
+      newErrors.firstName = 'First name is required';
+    }
+
+    if (!formData.lastName) {
+      newErrors.lastName = 'Last name is required';
     }
 
     if (!formData.dateOfBirth) {
@@ -129,6 +157,22 @@ export default function KYCPage() {
       }
     }
 
+    if (!formData.gender) {
+      newErrors.gender = 'Gender is required';
+    }
+
+    if (!formData.phone) {
+      newErrors.phone = 'Phone number is required';
+    } else if (!/^(\+233|0)[2-5][0-9]{8}$/.test(formData.phone)) {
+      newErrors.phone = 'Invalid Ghanaian phone number format';
+    }
+
+    if (!formData.ghanaCardNumber) {
+      newErrors.ghanaCardNumber = 'Ghana Card number is required';
+    } else if (!/^GHA-\d{9}-\d$/.test(formData.ghanaCardNumber.toUpperCase())) {
+      newErrors.ghanaCardNumber = 'Invalid format. Use GHA-XXXXXXXXX-X';
+    }
+
     if (!formData.address) {
       newErrors.address = 'Address is required';
     }
@@ -139,6 +183,26 @@ export default function KYCPage() {
 
     if (!formData.region) {
       newErrors.region = 'Region is required';
+    }
+
+    if (!formData.occupation) {
+      newErrors.occupation = 'Occupation is required';
+    }
+
+    if (!formData.sourceOfFunds || formData.sourceOfFunds.length < 10) {
+      newErrors.sourceOfFunds = 'Source of funds is required (min 10 characters)';
+    }
+
+    if (!formData.annualIncome || isNaN(Number(formData.annualIncome)) || Number(formData.annualIncome) < 0) {
+      newErrors.annualIncome = 'Valid annual income is required';
+    }
+
+    if (!formData.termsAccepted) {
+      newErrors.termsAccepted = 'You must accept the terms and conditions';
+    }
+
+    if (!formData.privacyAccepted) {
+      newErrors.privacyAccepted = 'You must accept the privacy policy';
     }
 
     setErrors(newErrors);
@@ -156,7 +220,9 @@ export default function KYCPage() {
     try {
       const submitData = {
         ...formData,
-        ghanaCardNumber: formData.ghanaCardNumber.toUpperCase()
+        ghanaCardNumber: formData.ghanaCardNumber.toUpperCase(),
+        idNumber: formData.ghanaCardNumber.toUpperCase(), // Use Ghana Card as ID number
+        annualIncome: Number(formData.annualIncome)
       };
 
       if (kycStatus?.status === 'REJECTED') {
@@ -226,7 +292,7 @@ export default function KYCPage() {
             <p className="text-dark-500 text-sm mb-6">
               This usually takes 1-2 business days.
             </p>
-            
+
             {kycStatus.details && (
               <div className="bg-dark-800/50 rounded-xl p-4 max-w-md mx-auto text-left mb-6">
                 <p className="text-sm text-dark-400">
@@ -237,7 +303,7 @@ export default function KYCPage() {
                 </p>
               </div>
             )}
-            
+
             <button
               onClick={() => navigate(getDashboardLink())}
               className="btn-secondary"
@@ -317,13 +383,71 @@ export default function KYCPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              {/* Personal Information */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-dark-300">
+                  <Shield className="w-5 h-5" />
+                  <span className="font-medium">Personal Information</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <FormInput
+                    label="First Name"
+                    name="firstName"
+                    value={formData.firstName}
+                    onChange={handleChange}
+                    placeholder="John"
+                    error={errors.firstName}
+                  />
+
+                  <FormInput
+                    label="Last Name"
+                    name="lastName"
+                    value={formData.lastName}
+                    onChange={handleChange}
+                    placeholder="Doe"
+                    error={errors.lastName}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Gender</label>
+                    <select
+                      name="gender"
+                      value={formData.gender}
+                      onChange={handleChange}
+                      className={`select ${errors.gender ? 'border-ghana-red-500' : ''}`}
+                    >
+                      <option value="">Select gender</option>
+                      <option value="MALE">Male</option>
+                      <option value="FEMALE">Female</option>
+                      <option value="OTHER">Other</option>
+                    </select>
+                    {errors.gender && (
+                      <p className="text-sm text-ghana-red-400 mt-1">{errors.gender}</p>
+                    )}
+                  </div>
+
+                  <FormInput
+                    label="Phone Number"
+                    name="phone"
+                    value={formData.phone}
+                    onChange={handleChange}
+                    placeholder="+233201234567"
+                    error={errors.phone}
+                    helpText="Format: +233XXXXXXXX or 0XXXXXXXX"
+                  />
+                </div>
+              </div>
+
               {/* Ghana Card Section */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-dark-300">
                   <CreditCard className="w-5 h-5" />
                   <span className="font-medium">Ghana Card Details</span>
                 </div>
-                
+
                 <FormInput
                   label="Ghana Card Number"
                   name="ghanaCardNumber"
@@ -360,7 +484,7 @@ export default function KYCPage() {
                   error={errors.address}
                 />
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-3 gap-4">
                   <FormInput
                     label="City"
                     name="city"
@@ -387,31 +511,114 @@ export default function KYCPage() {
                       <p className="text-sm text-ghana-red-400 mt-1">{errors.region}</p>
                     )}
                   </div>
+
+                  <FormInput
+                    label="Postal Code"
+                    name="postalCode"
+                    value={formData.postalCode}
+                    onChange={handleChange}
+                    placeholder="00233"
+                    error={errors.postalCode}
+                  />
                 </div>
               </div>
 
-              {/* Additional Information */}
+              {/* Financial Information */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-dark-300">
                   <Briefcase className="w-5 h-5" />
-                  <span className="font-medium">Additional Information (Optional)</span>
+                  <span className="font-medium">Financial Information</span>
                 </div>
 
-                <FormInput
-                  label="Occupation"
-                  name="occupation"
-                  value={formData.occupation}
-                  onChange={handleChange}
-                  placeholder="Software Engineer"
-                />
+                <div className="grid grid-cols-2 gap-4">
+                  <FormInput
+                    label="Occupation"
+                    name="occupation"
+                    value={formData.occupation}
+                    onChange={handleChange}
+                    placeholder="Software Engineer"
+                    error={errors.occupation}
+                  />
+
+                  <FormInput
+                    label="Annual Income (GHS)"
+                    name="annualIncome"
+                    type="number"
+                    value={formData.annualIncome}
+                    onChange={handleChange}
+                    placeholder="50000"
+                    error={errors.annualIncome}
+                  />
+                </div>
 
                 <FormInput
                   label="Source of Funds"
                   name="sourceOfFunds"
                   value={formData.sourceOfFunds}
                   onChange={handleChange}
-                  placeholder="Employment Income"
+                  placeholder="Employment Income, Business Profits, etc."
+                  error={errors.sourceOfFunds}
+                  helpText="Minimum 10 characters required"
                 />
+
+                <FormInput
+                  label="Tax ID (Optional)"
+                  name="taxId"
+                  value={formData.taxId}
+                  onChange={handleChange}
+                  placeholder="TIN-123456789"
+                  error={errors.taxId}
+                />
+              </div>
+
+              {/* Terms and Conditions */}
+              <div className="space-y-4">
+                <div className="space-y-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="termsAccepted"
+                      checked={formData.termsAccepted}
+                      onChange={(e) => setFormData(prev => ({ ...prev, termsAccepted: e.target.checked }))}
+                      className="mt-1 w-4 h-4 text-ghana-gold-500 border-dark-600 rounded focus:ring-ghana-gold-500"
+                    />
+                    <span className="text-sm text-dark-300">
+                      I accept <a href="/terms" className="text-ghana-gold-400 hover:underline">Terms and Conditions</a> of InvestGhanaHub
+                    </span>
+                  </label>
+                  {errors.termsAccepted && (
+                    <p className="text-sm text-ghana-red-400">{errors.termsAccepted}</p>
+                  )}
+
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="privacyAccepted"
+                      checked={formData.privacyAccepted}
+                      onChange={(e) => setFormData(prev => ({ ...prev, privacyAccepted: e.target.checked }))}
+                      className="mt-1 w-4 h-4 text-ghana-gold-500 border-dark-600 rounded focus:ring-ghana-gold-500"
+                    />
+                    <span className="text-sm text-dark-300">
+                      I accept <a href="/privacy" className="text-ghana-gold-400 hover:underline">Privacy Policy</a> and consent to data processing
+                    </span>
+                  </label>
+                  {errors.privacyAccepted && (
+                    <p className="text-sm text-ghana-red-400">{errors.privacyAccepted}</p>
+                  )}
+
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      name="politicallyExposed"
+                      checked={formData.politicallyExposed}
+                      onChange={(e) => setFormData(prev => ({ ...prev, politicallyExposed: e.target.checked }))}
+                      className="mt-1 w-4 h-4 text-ghana-gold-500 border-dark-600 rounded focus:ring-ghana-gold-500"
+                    />
+                    <span className="text-sm text-dark-300">
+                      I am a Politically Exposed Person (PEP)
+                    </span>
+                  </label>
+                </div>
               </div>
 
               {/* Submit buttons */}
@@ -446,8 +653,8 @@ export default function KYCPage() {
             </form>
           </div>
         )}
-      </div>
-    </div>
+      </div >
+    </div >
   );
 }
 

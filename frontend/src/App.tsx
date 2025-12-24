@@ -31,6 +31,7 @@ interface User {
   email: string;
   firstName: string;
   lastName: string;
+  phone?: string;
   role: 'INVESTOR' | 'BUSINESS_OWNER' | 'ADMIN';
   kycStatus?: string;
 }
@@ -56,11 +57,11 @@ export const useAuth = () => {
 };
 
 // Protected Route Component
-const ProtectedRoute = ({ 
-  children, 
-  allowedRoles 
-}: { 
-  children: React.ReactNode; 
+const ProtectedRoute = ({
+  children,
+  allowedRoles
+}: {
+  children: React.ReactNode;
   allowedRoles?: string[];
 }) => {
   const { isAuthenticated, user } = useAuth();
@@ -152,31 +153,31 @@ function App() {
             <Routes>
               {/* Public Routes */}
               <Route path="/" element={<HomePage />} />
-              <Route 
-                path="/login" 
+              <Route
+                path="/login"
                 element={
                   user ? (
                     <Navigate to={
-                      user.role === 'ADMIN' ? '/admin' : 
-                      user.role === 'BUSINESS_OWNER' ? '/owner' : '/investor'
+                      user.role === 'ADMIN' ? '/admin' :
+                        user.role === 'BUSINESS_OWNER' ? '/owner' : '/investor'
                     } replace />
                   ) : (
                     <LoginPage />
                   )
-                } 
+                }
               />
-              <Route 
-                path="/register" 
+              <Route
+                path="/register"
                 element={
                   user ? (
                     <Navigate to={
-                      user.role === 'ADMIN' ? '/admin' : 
-                      user.role === 'BUSINESS_OWNER' ? '/owner' : '/investor'
+                      user.role === 'ADMIN' ? '/admin' :
+                        user.role === 'BUSINESS_OWNER' ? '/owner' : '/investor'
                     } replace />
                   ) : (
                     <RegisterPage />
                   )
-                } 
+                }
               />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
