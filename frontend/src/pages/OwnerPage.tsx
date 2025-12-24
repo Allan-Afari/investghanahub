@@ -5,10 +5,10 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Building2, 
-  Plus, 
-  Loader2, 
+import {
+  Building2,
+  Plus,
+  Loader2,
   Clock,
   CheckCircle2,
   XCircle,
@@ -19,6 +19,7 @@ import {
 import toast from 'react-hot-toast';
 import { businessAPI, kycAPI } from '../utils/api';
 import FormInput from '../components/FormInput';
+import BusinessAnalyticsCard from '../components/BusinessAnalyticsCard';
 
 interface ApiErrorShape {
   response?: {
@@ -62,11 +63,11 @@ interface BusinessOpportunity {
 
 export default function OwnerPage() {
   const navigate = useNavigate();
-  
+
   const [businesses, setBusinesses] = useState<Business[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [kycStatus, setKycStatus] = useState<string>('');
-  
+
   // Business form modal
   const [showBusinessForm, setShowBusinessForm] = useState(false);
   const [businessFormData, setBusinessFormData] = useState({
@@ -80,7 +81,7 @@ export default function OwnerPage() {
   });
   const [businessErrors, setBusinessErrors] = useState<Record<string, string>>({});
   const [isSubmittingBusiness, setIsSubmittingBusiness] = useState(false);
-  
+
   // Opportunity form modal
   const [showOpportunityForm, setShowOpportunityForm] = useState(false);
   const [selectedBusinessId, setSelectedBusinessId] = useState<string | null>(null);
@@ -258,13 +259,13 @@ export default function OwnerPage() {
   // KYC warning banner
   const KYCWarning = () => {
     if (kycStatus === 'APPROVED') return null;
-    
+
     return (
       <div className="mb-6 p-4 bg-ghana-gold-500/10 border border-ghana-gold-500/30 rounded-xl flex items-center gap-4">
         <AlertCircle className="w-6 h-6 text-ghana-gold-500 flex-shrink-0" />
         <div className="flex-1">
           <p className="text-ghana-gold-400 font-medium">
-            {kycStatus === 'PENDING' 
+            {kycStatus === 'PENDING'
               ? 'Your KYC is pending approval'
               : 'Complete KYC verification to create businesses'}
           </p>
@@ -399,6 +400,8 @@ export default function OwnerPage() {
                     </div>
                   </div>
 
+                  <BusinessAnalyticsCard businessId={business.id} />
+
                   {/* Opportunities list */}
                   {business.opportunities.length > 0 && (
                     <div className="pt-4 border-t border-dark-700">
@@ -446,7 +449,7 @@ export default function OwnerPage() {
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="bg-white rounded-lg shadow-xl max-w-lg w-full my-8 p-6 animate-slide-up">
               <h3 className="text-2xl font-bold text-gray-900 mb-6">Add New Business</h3>
-              
+
               <form onSubmit={handleSubmitBusiness} className="space-y-4">
                 <FormInput
                   label="Business Name"
@@ -559,7 +562,7 @@ export default function OwnerPage() {
           <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
             <div className="card max-w-lg w-full my-8 animate-slide-up">
               <h3 className="text-xl font-display font-bold mb-6">Create Investment Opportunity</h3>
-              
+
               <form onSubmit={handleSubmitOpportunity} className="space-y-4">
                 <FormInput
                   label="Title"

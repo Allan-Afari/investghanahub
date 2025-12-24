@@ -23,6 +23,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '../App';
 import { investmentAPI, kycAPI } from '../utils/api';
 import DashboardTable from '../components/DashboardTable';
+import InvestorAnalytics from '../components/InvestorAnalytics';
 
 type InvestorTab = 'opportunities' | 'portfolio' | 'history';
 
@@ -275,8 +276,8 @@ export default function InvestorPage() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg whitespace-nowrap transition-all ${activeTab === tab.id
-                  ? 'bg-ghana-gold-500 text-dark-950 font-medium'
-                  : 'text-dark-400 hover:bg-dark-800'
+                ? 'bg-ghana-gold-500 text-dark-950 font-medium'
+                : 'text-dark-400 hover:bg-dark-800'
                 }`}
             >
               <tab.icon className="w-4 h-4" />
@@ -470,6 +471,9 @@ export default function InvestorPage() {
                     )}
                   </div>
                 </div>
+
+                {/* Analytics Mini-Charts */}
+                <InvestorAnalytics portfolio={portfolio} />
               </div>
             )}
 
