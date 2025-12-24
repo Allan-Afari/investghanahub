@@ -10,7 +10,7 @@ import { smsService } from './smsService';
 const prisma = new PrismaClient();
 
 type NotificationType = 'INFO' | 'SUCCESS' | 'WARNING' | 'ERROR';
-type NotificationCategory = 'KYC' | 'INVESTMENT' | 'TRANSACTION' | 'SYSTEM' | 'BUSINESS';
+type NotificationCategory = 'KYC' | 'INVESTMENT' | 'TRANSACTION' | 'SYSTEM' | 'BUSINESS' | 'SUBSCRIPTION' | 'PROMOTION' | 'MESSAGE';
 
 interface CreateNotificationData {
   userId: string;
@@ -244,6 +244,51 @@ class NotificationService {
     if (user.phone) {
       await smsService.sendTransactionAlert(user.phone, 'DEPOSIT', amount, newBalance);
     }
+  }
+
+  /**
+   * Send payment received notification
+   */
+  async notifyPaymentReceived(userId: string, amount: number, reference: string): Promise<void> {
+    await this.create({
+      userId,
+      title: 'Payment Received',
+      message: `Your wallet has been credited with ₵${amount.toLocaleString()} (Ref: ${reference}).`,
+      type: 'SUCCESS',
+      category: 'TRANSACTION',
+      link: '/wallet',
+      sendEmail: true,
+    });
+  }
+
+  /**
+   * Send withdrawal processed notification
+   */
+  async notifyWithdrawalProcessed(userId: string, amount: number, reference: string): Promise<void> {
+    await this.create({
+      userId,
+      title: 'Withdrawal Processed',
+      message: `Your withdrawal of ₵${amount.toLocaleString()} has been processed (Ref: ${reference}).`,
+      type: 'SUCCESS',
+      category: 'TRANSACTION',
+      link: '/wallet',
+      sendEmail: true,
+    });
+  }
+
+  /**
+   * Send investment created notification to business owner
+   */
+  async notifyInvestmentCreated(userId: string, investmentTitle: string, amount: number): Promise<void> {
+    await this.create({
+      userId,
+      title: 'New Investment! 🎉',
+      message: `Someone invested ₵${amount.toLocaleString()} in your opportunity "${investmentTitle}".`,
+      type: 'SUCCESS',
+      category: 'INVESTMENT',
+      link: '/owner',
+      sendEmail: true,
+    });
   }
 
   /**

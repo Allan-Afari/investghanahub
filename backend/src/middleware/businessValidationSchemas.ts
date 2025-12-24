@@ -29,12 +29,25 @@ export const businessValidationSchema = Joi.object({
 export const opportunityValidationSchema = Joi.object({
   title: Joi.string().min(5).max(100).trim().required(),
   description: Joi.string().min(20).max(1000).trim().required(),
-  investmentAmount: Joi.number().min(1000).max(10000000).required(),
-  equityPercentage: Joi.number().min(0.1).max(100).required(),
-  minimumInvestment: Joi.number().min(100).max(1000000).required(),
-  expectedReturn: Joi.number().min(0).max(1000).required(),
-  investmentPeriod: Joi.number().min(1).max(20).required(),
+  // New (Phase 2) payload
+  minInvestment: Joi.number().min(100).max(1000000).optional(),
+  maxInvestment: Joi.number().min(100).max(10000000).optional(),
+  targetAmount: Joi.number().min(1000).max(10000000).optional(),
+  investmentModel: Joi.string().valid('EQUITY', 'DEBT', 'REVENUE_SHARE').optional(),
+  equityPercentage: Joi.number().min(0.1).max(100).optional(),
+  interestRate: Joi.number().min(0).max(1000).optional(),
+  revenueSharePercentage: Joi.number().min(0.1).max(100).optional(),
+  expectedReturn: Joi.number().min(0).max(1000).optional(),
+  duration: Joi.number().min(1).max(240).optional(),
+  startDate: Joi.date().optional(),
+  endDate: Joi.date().optional(),
+
+  // Legacy payload (kept for backwards compatibility)
+  investmentAmount: Joi.number().min(1000).max(10000000).optional(),
+  minimumInvestment: Joi.number().min(100).max(1000000).optional(),
+  investmentPeriod: Joi.number().min(1).max(240).optional(),
+  deadline: Joi.date().min('now').optional(),
+
   riskLevel: Joi.string().valid('low', 'medium', 'high').required(),
-  deadline: Joi.date().min('now').required(),
   documents: Joi.array().items(Joi.string().uri()).optional()
 });

@@ -24,6 +24,24 @@ const investmentValidation = [
     .withMessage('Invalid opportunity ID format'),
   body('amount')
     .isFloat({ min: 50 })
+    .withMessage('Investment amount must be at least 50 GHS'),
+  body('agreementId')
+    .trim()
+    .notEmpty()
+    .withMessage('Agreement ID is required')
+    .isUUID()
+    .withMessage('Invalid agreement ID format')
+];
+
+const agreementPreviewValidation = [
+  body('opportunityId')
+    .trim()
+    .notEmpty()
+    .withMessage('Investment opportunity ID is required')
+    .isUUID()
+    .withMessage('Invalid opportunity ID format'),
+  body('amount')
+    .isFloat({ min: 50 })
     .withMessage('Investment amount must be at least 50 GHS')
 ];
 
@@ -113,6 +131,82 @@ router.get(
 // ===========================================
 
 /**
+ * POST /api/investments/agreements/preview
+ * Generate a draft investment agreement and return its content
+ */
+router.post(
+  '/agreements/preview',
+  authMiddleware,
+  agreementPreviewValidation,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        res.status(400).json({
+          success: false,
+          message: 'Validation failed',
+          errors: errors.array()
+        });
+        return;
+      }
+
+      const investorId = (req as any).user.id;
+      const { opportunityId, amount } = req.body;
+      const ipAddress = req.ip || req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'];
+
+      const result = await investmentService.previewInvestmentAgreement(
+        investorId,
+        opportunityId,
+        amount,
+        ipAddress,
+        userAgent
+      );
+
+      res.status(200).json({
+        success: true,
+        message: 'Agreement generated',
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/investments/agreements/:id/accept
+ * Accept a draft agreement
+ */
+router.post(
+  '/agreements/:id/accept',
+  authMiddleware,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const investorId = (req as any).user.id;
+      const { id } = req.params;
+      const ipAddress = req.ip || req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'];
+
+      const result = await investmentService.acceptInvestmentAgreement(
+        investorId,
+        id,
+        ipAddress,
+        userAgent
+      );
+
+      res.status(200).json({
+        success: true,
+        message: 'Agreement accepted',
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
  * POST /api/investments/invest
  * Make an investment (investor only, KYC required)
  * Uses fraud detection middleware
@@ -135,13 +229,14 @@ router.post(
       }
 
       const investorId = (req as any).user.id;
-      const { opportunityId, amount } = req.body;
+      const { opportunityId, amount, agreementId } = req.body;
       const ipAddress = req.ip || req.socket.remoteAddress;
 
       const result = await investmentService.makeInvestment(
         investorId,
         opportunityId,
         amount,
+        agreementId,
         ipAddress
       );
 

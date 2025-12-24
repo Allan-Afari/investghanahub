@@ -3,6 +3,8 @@ import rateLimit from 'express-rate-limit';
 import express, { Request, Response, NextFunction } from 'express';
 import { body, validationResult } from 'express-validator';
 
+ const isProduction = process.env.NODE_ENV === 'production';
+
 // Security headers middleware using helmet
 export const securityHeaders = helmet({
   contentSecurityPolicy: {
@@ -29,7 +31,7 @@ export const compressionMiddleware = (req: Request, res: Response, next: NextFun
 // API rate limiter
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
+  max: isProduction ? 100 : 10000, // limit each IP to 100 requests per windowMs
   message: {
     success: false,
     message: 'Too many requests from this IP, please try again later.',
@@ -41,7 +43,7 @@ export const apiLimiter = rateLimit({
 // Auth rate limiter (stricter)
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 auth requests per windowMs
+  max: isProduction ? 5 : 1000, // limit each IP to 5 auth requests per windowMs
   message: {
     success: false,
     message: 'Too many authentication attempts, please try again later.',
@@ -53,7 +55,7 @@ export const authLimiter = rateLimit({
 // Upload rate limiter
 export const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 10, // limit each IP to 10 uploads per hour
+  max: isProduction ? 10 : 500, // limit each IP to 10 uploads per hour
   message: {
     success: false,
     message: 'Upload limit exceeded, please try again later.',

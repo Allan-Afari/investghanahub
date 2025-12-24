@@ -12,10 +12,20 @@ interface BusinessCreateData {
   name: string;
   description: string;
   category: string;
+  industry?: string;
+  stage?: string;
   location: string;
   region: string;
   registrationNumber?: string;
   targetAmount: number;
+  minInvestment?: number;
+  valuation?: number;
+  equityOffered?: number;
+  useOfFunds?: string;
+  riskDisclosure?: string;
+  financialProjections?: any;
+  revenueHistory?: any;
+  documents?: any;
 }
 
 interface OpportunityCreateData {
@@ -23,7 +33,11 @@ interface OpportunityCreateData {
   description: string;
   minInvestment: number;
   maxInvestment: number;
-  expectedReturn: number;
+  investmentModel?: 'EQUITY' | 'DEBT' | 'REVENUE_SHARE';
+  equityPercentage?: number;
+  interestRate?: number;
+  revenueSharePercentage?: number;
+  expectedReturn?: number;
   duration: number;
   riskLevel: string;
   targetAmount: number;
@@ -33,9 +47,17 @@ interface OpportunityCreateData {
 
 interface ListFilters {
   category?: string;
+  industry?: string;
+  stage?: string;
   region?: string;
+  minInvestment?: number;
+  maxInvestment?: number;
+  riskLevel?: string;
+  isFeatured?: boolean;
   page: number;
   limit: number;
+  sortBy?: 'createdAt' | 'targetAmount' | 'currentAmount';
+  sortOrder?: 'asc' | 'desc';
 }
 
 /**
@@ -60,6 +82,14 @@ class BusinessService {
       throw error;
     }
 
+    // Validate business stage
+    const validStages = ['IDEA', 'STARTUP', 'GROWTH', 'ESTABLISHED'];
+    if (data.stage && !validStages.includes(data.stage)) {
+      const error = new Error('Invalid business stage') as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
     // Create business
     const business = await prisma.business.create({
       data: {
@@ -67,10 +97,20 @@ class BusinessService {
         name: data.name,
         description: data.description,
         category: data.category,
+        industry: data.industry,
+        stage: data.stage,
         location: data.location,
         region: data.region,
         registrationNumber: data.registrationNumber,
-        targetAmount: data.targetAmount
+        targetAmount: data.targetAmount,
+        minInvestment: data.minInvestment,
+        valuation: data.valuation,
+        equityOffered: data.equityOffered,
+        useOfFunds: data.useOfFunds,
+        riskDisclosure: data.riskDisclosure,
+        financialProjections: data.financialProjections,
+        revenueHistory: data.revenueHistory,
+        documents: data.documents
       }
     });
 
@@ -86,12 +126,37 @@ class BusinessService {
    * @returns Paginated list of businesses
    */
   async listApprovedBusinesses(filters: ListFilters): Promise<any> {
-    const { category, region, page, limit } = filters;
+    const { 
+      category, 
+      industry, 
+      stage, 
+      region, 
+      minInvestment, 
+      maxInvestment, 
+      riskLevel, 
+      isFeatured,
+      page, 
+      limit, 
+      sortBy = 'createdAt', 
+      sortOrder = 'desc' 
+    } = filters;
     const skip = (page - 1) * limit;
 
     const where: any = { status: 'APPROVED' };
+    
+    // Apply filters
     if (category) where.category = category;
+    if (industry) where.industry = industry;
+    if (stage) where.stage = stage;
     if (region) where.region = region;
+    if (isFeatured !== undefined) where.isFeatured = isFeatured;
+    
+    // Investment range filters
+    if (minInvestment || maxInvestment) {
+      where.minInvestment = {};
+      if (minInvestment) where.minInvestment.gte = minInvestment;
+      if (maxInvestment) where.minInvestment.lte = maxInvestment;
+    }
 
     const [businesses, total] = await Promise.all([
       prisma.business.findMany({
@@ -101,7 +166,8 @@ class BusinessService {
             select: {
               id: true,
               firstName: true,
-              lastName: true
+              lastName: true,
+              verificationStatus: true
             }
           },
           opportunities: {
@@ -111,7 +177,9 @@ class BusinessService {
               title: true,
               minInvestment: true,
               expectedReturn: true,
-              riskLevel: true
+              riskLevel: true,
+              targetAmount: true,
+              currentAmount: true
             }
           },
           _count: {
@@ -120,7 +188,7 @@ class BusinessService {
         },
         skip,
         take: limit,
-        orderBy: { createdAt: 'desc' }
+        orderBy: { [sortBy]: sortOrder }
       }),
       prisma.business.count({ where })
     ]);
@@ -318,9 +386,23 @@ class BusinessService {
       throw error;
     }
 
+    const minInvestment = data.minInvestment ?? (data as any).minimumInvestment;
+    const maxInvestment = data.maxInvestment ?? (data as any).investmentAmount;
+    const targetAmount = data.targetAmount ?? (data as any).investmentAmount;
+    const duration = data.duration ?? (data as any).investmentPeriod;
+
+    const startDateValue = data.startDate ?? new Date().toISOString();
+    const endDateValue = data.endDate ?? (data as any).deadline;
+
     // Validate dates
-    const startDate = new Date(data.startDate);
-    const endDate = new Date(data.endDate);
+    const startDate = new Date(startDateValue);
+    const endDate = new Date(endDateValue);
+
+    if (!minInvestment || !maxInvestment || !targetAmount || !duration) {
+      const error = new Error('Missing required opportunity fields') as any;
+      error.statusCode = 400;
+      throw error;
+    }
 
     if (endDate <= startDate) {
       const error = new Error('End date must be after start date') as any;
@@ -334,15 +416,19 @@ class BusinessService {
         businessId,
         title: data.title,
         description: data.description,
-        minInvestment: data.minInvestment,
-        maxInvestment: data.maxInvestment,
+        minInvestment,
+        maxInvestment,
+        investmentModel: data.investmentModel || 'EQUITY',
+        equityPercentage: data.equityPercentage,
+        interestRate: data.interestRate,
+        revenueSharePercentage: data.revenueSharePercentage,
         expectedReturn: data.expectedReturn,
-        duration: data.duration,
+        duration,
         riskLevel: data.riskLevel,
-        targetAmount: data.targetAmount,
+        targetAmount,
         startDate,
         endDate
-      }
+      } as any
     });
 
     // Create audit log
@@ -600,6 +686,287 @@ class BusinessService {
         pages: Math.ceil(total / limit)
       }
     };
+  }
+
+  /**
+   * Compare multiple businesses side-by-side
+   * @param businessIds - Array of business IDs to compare
+   * @returns Comparison data
+   */
+  async compareBusinesses(businessIds: string[]): Promise<any> {
+    const businesses = await prisma.business.findMany({
+      where: {
+        id: { in: businessIds },
+        status: 'APPROVED'
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            verificationStatus: true
+          }
+        },
+        opportunities: {
+          where: { status: 'OPEN' },
+          select: {
+            id: true,
+            title: true,
+            minInvestment: true,
+            maxInvestment: true,
+            expectedReturn: true,
+            riskLevel: true,
+            targetAmount: true,
+            currentAmount: true
+          }
+        },
+        _count: {
+          select: { opportunities: true }
+        }
+      }
+    });
+
+    if (businesses.length === 0) {
+      const error = new Error('No valid businesses found for comparison') as any;
+      error.statusCode = 404;
+      throw error;
+    }
+
+    // Format comparison data
+    const comparison = businesses.map(business => ({
+      id: business.id,
+      name: business.name,
+      description: business.description,
+      category: business.category,
+      industry: business.industry || null,
+      stage: business.stage || null,
+      location: business.location,
+      region: business.region,
+      targetAmount: business.targetAmount,
+      currentAmount: business.currentAmount,
+      minInvestment: business.minInvestment || null,
+      valuation: business.valuation || null,
+      equityOffered: business.equityOffered || null,
+      useOfFunds: business.useOfFunds || null,
+      riskDisclosure: business.riskDisclosure || null,
+      owner: business.owner || null,
+      opportunities: business.opportunities || [],
+      opportunityCount: business._count?.opportunities || 0,
+      fundingProgress: (business.currentAmount / business.targetAmount) * 100,
+      createdAt: business.createdAt
+    }));
+
+    return {
+      businesses: comparison,
+      comparisonCount: comparison.length
+    };
+  }
+
+  /**
+   * Get smart recommendations for investors based on their profile
+   * @param userId - User ID
+   * @param limit - Number of recommendations
+   * @returns Recommended businesses
+   */
+  async getRecommendations(userId: string, limit: number = 5): Promise<any> {
+    // Get user's investment history to understand preferences
+    const userInvestments = await prisma.investment.findMany({
+      where: { investorId: userId },
+      include: {
+        opportunity: {
+          include: {
+            business: true
+          }
+        }
+      }
+    });
+
+    // Get user's watchlist to understand interests
+    const userWatchlist = await prisma.watchlist.findMany({
+      where: { userId },
+      include: {
+        business: true
+      }
+    });
+
+    // Extract preferences from investment history and watchlist
+    const preferredCategories = new Set<string>();
+    const preferredIndustries = new Set<string>();
+    const preferredStages = new Set<string>();
+    const preferredRegions = new Set<string>();
+
+    // Analyze investment history
+    userInvestments.forEach(investment => {
+      const business = investment.opportunity.business;
+      preferredCategories.add(business.category);
+      if (business.industry) preferredIndustries.add(business.industry);
+      if (business.stage) preferredStages.add(business.stage);
+      preferredRegions.add(business.region);
+    });
+
+    // Analyze watchlist
+    userWatchlist.forEach(item => {
+      const business = item.business;
+      preferredCategories.add(business.category);
+      if (business.industry) preferredIndustries.add(business.industry);
+      if (business.stage) preferredStages.add(business.stage);
+      preferredRegions.add(business.region);
+    });
+
+    // Get businesses the user hasn't invested in or watched
+    const excludedBusinessIds = new Set([
+      ...userInvestments.map(i => i.opportunity.businessId),
+      ...userWatchlist.map(w => w.businessId)
+    ]);
+
+    // Build recommendation query
+    const where: any = {
+      status: 'APPROVED',
+      id: { notIn: Array.from(excludedBusinessIds) }
+    };
+
+    // Add preference-based filters if available
+    const orConditions: any[] = [];
+    
+    if (preferredCategories.size > 0) {
+      orConditions.push({ category: { in: Array.from(preferredCategories) } });
+    }
+    
+    if (preferredIndustries.size > 0) {
+      orConditions.push({ industry: { in: Array.from(preferredIndustries) } });
+    }
+    
+    if (preferredStages.size > 0) {
+      orConditions.push({ stage: { in: Array.from(preferredStages) } });
+    }
+
+    if (orConditions.length > 0) {
+      where.OR = orConditions;
+    }
+
+    const recommendations = await prisma.business.findMany({
+      where,
+      include: {
+        owner: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            verificationStatus: true
+          }
+        },
+        opportunities: {
+          where: { status: 'OPEN' },
+          select: {
+            id: true,
+            title: true,
+            minInvestment: true,
+            expectedReturn: true,
+            riskLevel: true,
+            targetAmount: true,
+            currentAmount: true
+          }
+        },
+        _count: {
+          select: { opportunities: true }
+        }
+      },
+      take: limit,
+      orderBy: [
+        { isFeatured: 'desc' },
+        { createdAt: 'desc' }
+      ]
+    });
+
+    // Calculate recommendation scores
+    const scoredRecommendations = recommendations.map(business => {
+      let score = 0;
+      
+      // Category match
+      if (preferredCategories.has(business.category)) score += 3;
+      
+      // Industry match
+      if (business.industry && preferredIndustries.has(business.industry)) score += 2;
+      
+      // Stage match
+      if (business.stage && preferredStages.has(business.stage)) score += 2;
+      
+      // Region match
+      if (preferredRegions.has(business.region)) score += 1;
+      
+      // Featured bonus
+      if (business.isFeatured) score += 1;
+      
+      return {
+        ...business,
+        recommendationScore: score
+      };
+    });
+
+    // Sort by recommendation score
+    scoredRecommendations.sort((a, b) => b.recommendationScore - a.recommendationScore);
+
+    return {
+      recommendations: scoredRecommendations,
+      count: scoredRecommendations.length,
+      preferences: {
+        categories: Array.from(preferredCategories),
+        industries: Array.from(preferredIndustries),
+        stages: Array.from(preferredStages),
+        regions: Array.from(preferredRegions)
+      }
+    };
+  }
+
+  /**
+   * Feature a business (admin only)
+   * @param businessId - Business ID
+   * @param adminId - Admin user ID
+   * @param duration - Duration in days
+   * @returns Updated business
+   */
+  async featureBusiness(businessId: string, adminId: string, duration: number): Promise<any> {
+    const business = await prisma.business.findUnique({
+      where: { id: businessId }
+    });
+
+    if (!business) {
+      const error = new Error('Business not found') as any;
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (business.status !== 'APPROVED') {
+      const error = new Error('Only approved businesses can be featured') as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const featuredUntil = new Date();
+    featuredUntil.setDate(featuredUntil.getDate() + duration);
+
+    const updatedBusiness = await prisma.business.update({
+      where: { id: businessId },
+      data: {
+        isFeatured: true,
+        featuredUntil: featuredUntil
+      }
+    });
+
+    // Create audit log
+    await this.createAuditLog(
+      adminId,
+      'BUSINESS_FEATURED',
+      'Business',
+      businessId,
+      JSON.stringify({ duration, featuredUntil }),
+      undefined,
+      undefined,
+      adminId
+    );
+
+    return updatedBusiness;
   }
 }
 

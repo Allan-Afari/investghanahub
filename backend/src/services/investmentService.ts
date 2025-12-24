@@ -34,6 +34,149 @@ interface TransactionFilters {
  * Investment Service Class
  */
 class InvestmentService {
+  async previewInvestmentAgreement(
+    investorId: string,
+    opportunityId: string,
+    amount: number,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<any> {
+    const opportunity = await prisma.investmentOpportunity.findUnique({
+      where: { id: opportunityId },
+      include: { business: true },
+    });
+
+    if (!opportunity) {
+      const error = new Error('Investment opportunity not found') as any;
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (opportunity.status !== 'OPEN') {
+      const error = new Error('This investment opportunity is no longer open') as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (amount < opportunity.minInvestment) {
+      const error = new Error(`Minimum investment is ${opportunity.minInvestment} GHS`) as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (amount > opportunity.maxInvestment) {
+      const error = new Error(`Maximum investment is ${opportunity.maxInvestment} GHS`) as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const investmentModel = (opportunity as any).investmentModel as string | undefined;
+    const expectedReturnPct = (opportunity as any).expectedReturn as number | undefined;
+    const equityPercentage = (opportunity as any).equityPercentage as number | undefined;
+    const interestRate = (opportunity as any).interestRate as number | undefined;
+    const revenueSharePercentage = (opportunity as any).revenueSharePercentage as number | undefined;
+
+    let estimatedPayout = amount;
+    if (investmentModel === 'DEBT' && typeof interestRate === 'number') {
+      estimatedPayout = amount * (1 + interestRate / 100);
+    } else if ((investmentModel === 'EQUITY' || investmentModel === 'REVENUE_SHARE') && typeof expectedReturnPct === 'number') {
+      estimatedPayout = amount * (1 + expectedReturnPct / 100);
+    } else if (typeof expectedReturnPct === 'number') {
+      estimatedPayout = amount * (1 + expectedReturnPct / 100);
+    }
+
+    const terms: string[] = [];
+    terms.push(`Opportunity: ${opportunity.title}`);
+    terms.push(`Business: ${opportunity.business.name}`);
+    terms.push(`Investment Amount (GHS): ${amount}`);
+    terms.push(`Investment Model: ${investmentModel || 'EQUITY'}`);
+    if (investmentModel === 'EQUITY' && typeof equityPercentage === 'number') {
+      terms.push(`Equity Percentage (indicative): ${equityPercentage}%`);
+    }
+    if (investmentModel === 'DEBT' && typeof interestRate === 'number') {
+      terms.push(`Interest Rate: ${interestRate}%`);
+    }
+    if (investmentModel === 'REVENUE_SHARE' && typeof revenueSharePercentage === 'number') {
+      terms.push(`Revenue Share Percentage: ${revenueSharePercentage}%`);
+    }
+    if (typeof expectedReturnPct === 'number') {
+      terms.push(`Estimated ROI: ${expectedReturnPct}%`);
+    }
+    terms.push(`Estimated Payout (GHS): ${Math.round(estimatedPayout * 100) / 100}`);
+    terms.push(`Duration: ${opportunity.duration} months`);
+    terms.push(`Risk Level: ${opportunity.riskLevel}`);
+    terms.push(`Disclaimer: Investing involves risk. Returns are not guaranteed.`);
+
+    const content = terms.join('\n');
+
+    const agreement = await prisma.investmentAgreement.create({
+      data: {
+        investorId,
+        opportunityId,
+        amount,
+        status: 'DRAFT',
+        version: 'v1',
+        content,
+        ipAddress,
+        userAgent,
+      },
+    });
+
+    return {
+      agreementId: agreement.id,
+      status: agreement.status,
+      version: agreement.version,
+      content: agreement.content,
+    };
+  }
+
+  async acceptInvestmentAgreement(
+    investorId: string,
+    agreementId: string,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<any> {
+    const agreement = await prisma.investmentAgreement.findUnique({
+      where: { id: agreementId },
+    });
+
+    if (!agreement || agreement.investorId !== investorId) {
+      const error = new Error('Agreement not found') as any;
+      error.statusCode = 404;
+      throw error;
+    }
+
+    if (agreement.status === 'ACCEPTED') {
+      return {
+        agreementId: agreement.id,
+        status: agreement.status,
+        acceptedAt: agreement.acceptedAt,
+      };
+    }
+
+    if (agreement.investmentId) {
+      const error = new Error('Agreement has already been used for an investment') as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const updated = await prisma.investmentAgreement.update({
+      where: { id: agreement.id },
+      data: {
+        status: 'ACCEPTED',
+        acceptedAt: new Date(),
+        ipAddress,
+        userAgent,
+      },
+    });
+
+    return {
+      agreementId: updated.id,
+      status: updated.status,
+      acceptedAt: updated.acceptedAt,
+    };
+  }
+
   /**
    * List all open investment opportunities
    * @param filters - Filter options
@@ -144,6 +287,7 @@ class InvestmentService {
     investorId: string,
     opportunityId: string,
     amount: number,
+    agreementId: string,
     ipAddress?: string
   ): Promise<any> {
     // Verify investor has approved KYC
@@ -202,8 +346,64 @@ class InvestmentService {
       throw error;
     }
 
+    const agreement = await prisma.investmentAgreement.findUnique({
+      where: { id: agreementId },
+    });
+
+    if (!agreement || agreement.investorId !== investorId) {
+      const error = new Error('Valid investment agreement is required') as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (agreement.opportunityId !== opportunityId) {
+      const error = new Error('Agreement does not match opportunity') as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (agreement.amount !== amount) {
+      const error = new Error('Agreement amount does not match investment amount') as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (agreement.status !== 'ACCEPTED') {
+      const error = new Error('Agreement must be accepted before investing') as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (agreement.investmentId) {
+      const error = new Error('Agreement has already been used for an investment') as any;
+      error.statusCode = 400;
+      throw error;
+    }
+
     // Calculate expected return and maturity date
-    const expectedReturn = amount * (1 + opportunity.expectedReturn / 100);
+    const investmentModel = (opportunity as any).investmentModel as string | undefined;
+    const expectedReturnPct = (opportunity as any).expectedReturn as number | undefined;
+    const equityPercentage = (opportunity as any).equityPercentage as number | undefined;
+    const interestRate = (opportunity as any).interestRate as number | undefined;
+    const revenueSharePercentage = (opportunity as any).revenueSharePercentage as number | undefined;
+
+    let expectedReturn = amount;
+
+    if (investmentModel === 'DEBT' && typeof interestRate === 'number') {
+      expectedReturn = amount * (1 + interestRate / 100);
+    } else if (investmentModel === 'REVENUE_SHARE' && typeof expectedReturnPct === 'number') {
+      // Estimated ROI for revenue share deals.
+      expectedReturn = amount * (1 + expectedReturnPct / 100);
+    } else if (investmentModel === 'EQUITY' && typeof expectedReturnPct === 'number') {
+      // Equity is inherently variable; use expectedReturn as estimated ROI.
+      expectedReturn = amount * (1 + expectedReturnPct / 100);
+    } else if (typeof expectedReturnPct === 'number') {
+      // Backwards-compatible behavior.
+      expectedReturn = amount * (1 + expectedReturnPct / 100);
+    } else {
+      expectedReturn = amount;
+    }
+
     const maturityDate = new Date();
     maturityDate.setMonth(maturityDate.getMonth() + opportunity.duration);
 
@@ -218,6 +418,11 @@ class InvestmentService {
           expectedReturn,
           maturityDate
         }
+      });
+
+      await tx.investmentAgreement.update({
+        where: { id: agreementId },
+        data: { investmentId: investment.id },
       });
 
       // Create transaction record
@@ -504,7 +709,7 @@ class InvestmentService {
     const totalInvested = investments.reduce((sum, inv) => sum + inv.amount, 0);
     const totalExpectedReturn = investments.reduce((sum, inv) => sum + inv.expectedReturn, 0);
     const averageReturn = investments.length > 0
-      ? investments.reduce((sum, inv) => sum + inv.opportunity.expectedReturn, 0) / investments.length
+      ? investments.reduce((sum, inv) => sum + (inv.opportunity.expectedReturn ?? 0), 0) / investments.length
       : 0;
 
     // Monthly investment data for the last 6 months

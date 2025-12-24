@@ -25,9 +25,33 @@ const router = Router();
 
 const listBusinessesSchema = Joi.object({
   category: Joi.string().valid('crops', 'startup', 'operational').optional(),
+  industry: Joi.string().optional(),
+  stage: Joi.string().valid('IDEA', 'STARTUP', 'GROWTH', 'ESTABLISHED').optional(),
   region: Joi.string().optional(),
+  minInvestment: Joi.number().min(0).optional(),
+  maxInvestment: Joi.number().min(0).optional(),
+  riskLevel: Joi.string().valid('low', 'medium', 'high').optional(),
+  isFeatured: Joi.boolean().optional(),
   page: Joi.number().integer().min(1).default(1).optional(),
   limit: Joi.number().integer().min(1).max(50).default(10).optional(),
+  sortBy: Joi.string().valid('createdAt', 'targetAmount', 'currentAmount').default('createdAt').optional(),
+  sortOrder: Joi.string().valid('asc', 'desc').default('desc').optional(),
+});
+
+const compareBusinessesSchema = Joi.object({
+  businessIds: Joi.array().items(Joi.string().uuid()).min(2).max(5).required().messages({
+    'array.min': 'At least 2 businesses required for comparison',
+    'array.max': 'Maximum 5 businesses can be compared at once',
+    'any.required': 'Business IDs array is required'
+  })
+});
+
+const featureBusinessSchema = Joi.object({
+  duration: Joi.number().integer().min(1).max(365).required().messages({
+    'number.min': 'Duration must be at least 1 day',
+    'number.max': 'Duration cannot exceed 365 days',
+    'any.required': 'Duration is required'
+  })
 });
 
 const businessRejectSchema = Joi.object({
@@ -44,34 +68,28 @@ const businessRejectSchema = Joi.object({
 
 /**
  * GET /api/businesses
- * List all approved businesses (public)
+ * List all approved businesses with enhanced filtering (public)
  */
 router.get(
   '/',
-  [
-    query('category')
-      .optional()
-      .isIn(['crops', 'startup', 'operational']),
-    query('region')
-      .optional()
-      .isString(),
-    query('page')
-      .optional()
-      .isInt({ min: 1 }),
-    query('limit')
-      .optional()
-      .isInt({ min: 1, max: 50 })
-  ],
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { category, region, page = '1', limit = '10' } = req.query;
+      const filters = {
+        category: req.query.category as string,
+        industry: req.query.industry as string,
+        stage: req.query.stage as string,
+        region: req.query.region as string,
+        minInvestment: req.query.minInvestment ? parseInt(req.query.minInvestment as string) : undefined,
+        maxInvestment: req.query.maxInvestment ? parseInt(req.query.maxInvestment as string) : undefined,
+        riskLevel: req.query.riskLevel as string,
+        isFeatured: req.query.isFeatured ? req.query.isFeatured === 'true' : undefined,
+        page: parseInt(req.query.page as string) || 1,
+        limit: parseInt(req.query.limit as string) || 10,
+        sortBy: req.query.sortBy as 'createdAt' | 'targetAmount' | 'currentAmount' || 'createdAt',
+        sortOrder: req.query.sortOrder as 'asc' | 'desc' || 'desc'
+      };
 
-      const result = await businessService.listApprovedBusinesses({
-        category: category as string,
-        region: region as string,
-        page: parseInt(page as string),
-        limit: parseInt(limit as string)
-      });
+      const result = await businessService.listApprovedBusinesses(filters);
 
       res.status(200).json({
         success: true,
@@ -414,6 +432,83 @@ router.post(
       res.status(200).json({
         success: true,
         message: 'Business rejected',
+        data: result
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/businesses/compare
+ * Compare multiple businesses side-by-side
+ */
+router.post(
+  '/compare',
+  authMiddleware,
+  validate(compareBusinessesSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { businessIds } = req.body;
+
+      const comparison = await businessService.compareBusinesses(businessIds);
+
+      res.status(200).json({
+        success: true,
+        message: `Comparing ${comparison.comparisonCount} businesses`,
+        data: comparison
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/businesses/recommendations
+ * Get smart recommendations for investors based on their profile
+ */
+router.get(
+  '/recommendations',
+  authMiddleware,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = (req as any).user.id;
+      const limit = parseInt(req.query.limit as string) || 5;
+
+      const recommendations = await businessService.getRecommendations(userId, limit);
+
+      res.status(200).json({
+        success: true,
+        data: recommendations
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/businesses/:id/feature
+ * Feature a business (admin only)
+ */
+router.post(
+  '/:id/feature',
+  authMiddleware,
+  adminMiddleware,
+  validate(featureBusinessSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { id } = req.params;
+      const { duration } = req.body;
+      const adminId = (req as any).user.id;
+
+      const result = await businessService.featureBusiness(id, adminId, duration);
+
+      res.status(200).json({
+        success: true,
+        message: `Business featured for ${duration} days`,
         data: result
       });
     } catch (error) {

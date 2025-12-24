@@ -9,6 +9,8 @@ import { PrismaClient, Role } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+type VerificationStatus = 'UNVERIFIED' | 'VERIFIED' | 'PREMIUM' | 'REJECTED';
+
 // JWT configuration
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-jwt-key';
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
@@ -27,6 +29,11 @@ interface ProfileUpdateData {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  bio?: string;
+  expertise?: string;
+  experience?: string;
+  website?: string;
+  linkedin?: string;
 }
 
 interface UserResponse {
@@ -37,6 +44,15 @@ interface UserResponse {
   phone: string | null;
   role: Role;
   isActive: boolean;
+  verificationStatus: VerificationStatus;
+  isPremium: boolean;
+  subscriptionTier?: string;
+  profileImage?: string;
+  bio?: string;
+  expertise?: string;
+  experience?: string;
+  website?: string;
+  linkedin?: string;
   createdAt: Date;
   kycStatus?: string;
 }
@@ -185,7 +201,12 @@ class AuthService {
       data: {
         ...(data.firstName && { firstName: data.firstName }),
         ...(data.lastName && { lastName: data.lastName }),
-        ...(data.phone && { phone: data.phone })
+        ...(data.phone && { phone: data.phone }),
+        ...(data.bio !== undefined && { bio: data.bio }),
+        ...(data.expertise !== undefined && { expertise: data.expertise }),
+        ...(data.experience !== undefined && { experience: data.experience }),
+        ...(data.website !== undefined && { website: data.website }),
+        ...(data.linkedin !== undefined && { linkedin: data.linkedin })
       }
     });
 
@@ -234,6 +255,74 @@ class AuthService {
   }
 
   /**
+   * Update user verification status (Admin only)
+   * @param userId - User ID to update
+   * @param status - New verification status
+   * @param adminId - Admin performing the action
+   */
+  async updateVerificationStatus(userId: string, status: VerificationStatus, adminId: string): Promise<UserResponse> {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { verificationStatus: status } as any
+    });
+
+    // Create audit log
+    await this.createAuditLog(adminId, 'VERIFICATION_STATUS_UPDATE', 'User', userId, 
+      JSON.stringify({ oldStatus: (user as any).verificationStatus, newStatus: status }));
+
+    return this.formatUserResponse(user);
+  }
+
+  /**
+   * Upgrade user to premium tier
+   * @param userId - User ID
+   * @param tier - Subscription tier (PREMIUM, VIP)
+   * @param duration - Duration in months
+   */
+  async upgradeToPremium(userId: string, tier: string, duration: number): Promise<UserResponse> {
+    const subscriptionEnds = new Date();
+    subscriptionEnds.setMonth(subscriptionEnds.getMonth() + duration);
+
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: {
+        isPremium: true,
+        subscriptionTier: tier,
+        subscriptionEnds: subscriptionEnds,
+        verificationStatus: tier === 'VIP' ? 'PREMIUM' : 'VERIFIED'
+      } as any
+    });
+
+    // Create audit log
+    await this.createAuditLog(userId, 'PREMIUM_UPGRADE', 'User', userId, 
+      JSON.stringify({ tier, duration, subscriptionEnds }));
+
+    return this.formatUserResponse(user);
+  }
+
+  /**
+   * Get user by verification status for admin purposes
+   * @param status - Verification status to filter by
+   */
+  async getUsersByVerificationStatus(status: VerificationStatus): Promise<UserResponse[]> {
+    const users = await prisma.user.findMany({
+      where: { verificationStatus: status } as any,
+      include: { 
+        kyc: {
+          select: {
+            status: true
+          }
+        }
+      }
+    });
+
+    return users.map(user => ({
+      ...this.formatUserResponse(user),
+      kycStatus: (user as any).kyc?.status || 'NOT_SUBMITTED'
+    }));
+  }
+
+  /**
    * Generate JWT token
    * @param userId - User ID
    * @param role - User role
@@ -261,6 +350,15 @@ class AuthService {
       phone: user.phone,
       role: user.role,
       isActive: user.isActive,
+      verificationStatus: user.verificationStatus || 'UNVERIFIED',
+      isPremium: user.isPremium || false,
+      subscriptionTier: user.subscriptionTier || null,
+      profileImage: user.profileImage || null,
+      bio: user.bio || null,
+      expertise: user.expertise || null,
+      experience: user.experience || null,
+      website: user.website || null,
+      linkedin: user.linkedin || null,
       createdAt: user.createdAt
     };
   }

@@ -16,6 +16,15 @@ enum Role {
   INVESTOR
   BUSINESS_OWNER
   ADMIN
+  MENTOR
+}
+
+// Verification status enum
+enum VerificationStatus {
+  UNVERIFIED
+  VERIFIED
+  PREMIUM
+  REJECTED
 }
 
 // KYC status enum
@@ -37,6 +46,33 @@ enum OpportunityStatus {
   OPEN
   CLOSED
   FUNDED
+}
+
+// Investment model types
+enum InvestmentModel {
+  EQUITY
+  DEBT
+  REVENUE_SHARE
+}
+
+// Agreement status enum
+enum AgreementStatus {
+  DRAFT
+  ACCEPTED
+  REVOKED
+}
+
+enum DisputeStatus {
+  OPEN
+  UNDER_REVIEW
+  RESOLVED
+  CLOSED
+}
+
+enum DisputeResolution {
+  REFUND
+  RELEASE
+  REJECTED
 }
 
 // Transaction type enum
@@ -63,9 +99,19 @@ model User {
   phone             String?
   phoneVerified     Boolean      @default(false)
   emailVerified     Boolean      @default(false)
+  region            String?      // User's region in Ghana
   role              Role         @default(INVESTOR)
   isActive          Boolean      @default(true)
   profileImage      String?      // URL to profile image
+  verificationStatus VerificationStatus @default(UNVERIFIED) // New verification status field
+  bio               String?      // User bio/description
+  expertise         String?      // For mentors: area of expertise
+  experience        String?      // For mentors: years of experience or background
+  website           String?      // Personal or business website
+  linkedin          String?      // LinkedIn profile URL
+  isPremium         Boolean      @default(false) // Premium tier status
+  subscriptionTier  String?      // FREE, PREMIUM, VIP
+  subscriptionEnds  DateTime?    // Subscription expiry date
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 
@@ -74,14 +120,33 @@ model User {
   wallet            Wallet?
   businesses        Business[]
   investments       Investment[]
+  investmentAgreements InvestmentAgreement[]
+  openedDisputes    Dispute[]     @relation("DisputeOpenedBy")
+  resolvedDisputes  Dispute[]     @relation("DisputeResolvedBy")
   transactions      Transaction[]
   auditLogs         AuditLog[]   @relation("UserAuditLogs")
+  createdTerms      TermsAndConditions[]
+  createdDisclaimers Disclaimer[]
+  userAgreements    UserAgreement[]
+  verifiedBusinesses BusinessVerification[] @relation("VerifiedBusinesses")
+  reviewedVerifications BusinessVerification[] @relation("ReviewedVerifications")
   adminAuditLogs    AuditLog[]   @relation("AdminAuditLogs")
   fraudAlerts       FraudAlert[]
   otpCodes          OTPCode[]
   passwordResets    PasswordReset[]
   notifications     Notification[]
   profitTransfers   ProfitTransfer[]
+  investorEscrows    Escrow[]     @relation("EscrowInvestor")
+  watchlists         Watchlist[]
+  mentoredSessions   MentorSession[] @relation("MentorSessions")
+  menteeSessions     MentorSession[] @relation("MenteeSessions")
+  sentMessages       Message[]    @relation("SentMessages")
+  receivedMessages   Message[]    @relation("ReceivedMessages")
+  subscriptions      Subscription[] @relation("UserSubscriptions")
+  questions          Question[]    @relation("UserQuestions")
+  answeredQuestions  Question[]    @relation("AnsweredQuestions")
+  postedUpdates      ProgressUpdate[] @relation("PostedUpdates")
+  answers            Answer[]      @relation("UserAnswers")
 }
 
 // KYC model - Know Your Customer verification for Ghana compliance
@@ -117,22 +182,42 @@ model Business {
   name              String
   description       String
   category          String         // crops, startup, operational
+  industry          String?        // More specific industry classification
+  stage             String?        // IDEA, STARTUP, GROWTH, ESTABLISHED
   location          String         // Location in Ghana
   region            String         // Ghana region
   registrationNumber String?       // Ghana business registration
   targetAmount      Float          // Target funding amount in GHS
   currentAmount     Float          @default(0)
+  minInvestment     Float?         // Minimum investment amount
+  valuation         Float?         // Business valuation
+  equityOffered     Float?         // Percentage of equity offered
+  useOfFunds        String?        // Description of how funds will be used
+  riskDisclosure    String?        // Risk factors for investors
+  financialProjections Json?        // Financial projections for startups
+  revenueHistory    Json?          // Revenue data for existing businesses
+  documents         Json?          // Uploaded documents metadata
   status            BusinessStatus @default(PENDING)
   rejectionReason   String?
   reviewedBy        String?
   reviewedAt        DateTime?
+  isFeatured        Boolean        @default(false) // For premium listings
+  featuredUntil     DateTime?      // Featured listing expiry
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
   // Relations
   owner             User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   opportunities     InvestmentOpportunity[]
+  verification       BusinessVerification?
   bankAccount       BankAccount?
+  watchlists        Watchlist[]
+  mentorSessions    MentorSession[]
+  messages          Message[]
+  promotions        Promotion[] @relation("BusinessPromotions")
+  questions         Question[]    @relation("BusinessQuestions")
+  progressUpdates   ProgressUpdate[] @relation("BusinessUpdates")
+  escrows           Escrow[]     @relation("EscrowBusiness")
 }
 
 // Investment Opportunity model - Specific investment offerings
@@ -143,7 +228,11 @@ model InvestmentOpportunity {
   description       String
   minInvestment     Float             // Minimum investment in GHS
   maxInvestment     Float             // Maximum investment in GHS
-  expectedReturn    Float             // Expected return percentage
+  investmentModel   InvestmentModel   @default(EQUITY)
+  equityPercentage  Float?
+  interestRate      Float?
+  revenueSharePercentage Float?
+  expectedReturn    Float?            // Expected return percentage (estimated ROI)
   duration          Int               // Duration in months
   riskLevel         String            // low, medium, high
   targetAmount      Float
@@ -157,6 +246,7 @@ model InvestmentOpportunity {
   // Relations
   business          Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   investments       Investment[]
+  agreements        InvestmentAgreement[]
 }
 
 // Investment model - Records of investments made
@@ -166,7 +256,8 @@ model Investment {
   opportunityId     String
   amount            Float               // Amount invested in GHS
   expectedReturn    Float               // Expected return amount
-  status            String              @default("ACTIVE") // ACTIVE, MATURED, WITHDRAWN
+  actualReturn      Float?              // Actual returns received
+  status            String              @default("ACTIVE") // ACTIVE, MATURED, WITHDRAWN, COMPLETED
   investedAt        DateTime            @default(now())
   maturityDate      DateTime
   createdAt         DateTime            @default(now())
@@ -175,8 +266,33 @@ model Investment {
   // Relations
   investor          User                @relation(fields: [investorId], references: [id], onDelete: Cascade)
   opportunity       InvestmentOpportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  agreement         InvestmentAgreement?
+  disputes          Dispute[]
+  escrows           Escrow[]
   transactions      Transaction[]
+  commissions       Commission[]
   profitTransfers   ProfitTransfer[]
+}
+
+model InvestmentAgreement {
+  id                String         @id @default(uuid())
+  investorId        String
+  opportunityId     String
+  investmentId      String?        @unique
+  amount            Float
+  status            AgreementStatus @default(DRAFT)
+  version           String         @default("v1")
+  content           String
+  ipAddress         String?
+  userAgent         String?
+  acceptedAt        DateTime?
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  // Relations
+  investor          User               @relation(fields: [investorId], references: [id], onDelete: Cascade)
+  opportunity       InvestmentOpportunity @relation(fields: [opportunityId], references: [id], onDelete: Cascade)
+  investment        Investment?         @relation(fields: [investmentId], references: [id], onDelete: SetNull)
 }
 
 // Transaction model - All financial transactions
@@ -302,7 +418,7 @@ model Notification {
   title             String
   message           String
   type              String    // INFO, SUCCESS, WARNING, ERROR
-  category          String    // KYC, INVESTMENT, TRANSACTION, SYSTEM
+  category          String    // KYC, INVESTMENT, TRANSACTION, SYSTEM, SUBSCRIPTION, PROMOTION
   isRead            Boolean   @default(false)
   link              String?   // Optional link to redirect
   createdAt         DateTime  @default(now())
@@ -372,5 +488,320 @@ model Payment {
   paidAt            DateTime?
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
+
+  disputes          Dispute[]
+}
+
+// Escrow model - Secure fund holding for investments
+model Escrow {
+  id                String    @id @default(uuid())
+  investmentId      String
+  investorId        String
+  businessId        String
+  amount            Float
+  currency          String    @default("GHS")
+  status            String    @default("PENDING") // PENDING, HELD, RELEASED, REFUNDED, EXPIRED
+  paymentReference  String    @unique
+  paymentUrl        String?
+  conditions        String[]  @default([])
+  releaseOn         DateTime?
+  paidAt            DateTime?
+  releasedAt         DateTime?
+  releasedBy         String?    // Admin user ID or "SYSTEM"
+  releaseReason      String?
+  transferReference String?
+  refundedAt        DateTime?
+  refundedBy        String?    // Admin user ID
+  refundReason      String?
+  refundAmount      Float?
+  refundReference   String?
+  paymentVerified   Boolean   @default(false)
+  documents         String[]  @default([])
+  metadata          String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  expiresAt         DateTime
+
+  // Relations
+  investment        Investment @relation(fields: [investmentId], references: [id], onDelete: Cascade)
+  investor          User      @relation("EscrowInvestor", fields: [investorId], references: [id])
+  business          Business  @relation("EscrowBusiness", fields: [businessId], references: [id])
+
+  disputes          Dispute[]
+}
+
+model Dispute {
+  id                String           @id @default(uuid())
+  paymentReference  String           @unique
+  paystackDisputeId String?          @unique
+  paymentId         String?
+  escrowId          String?
+  investmentId      String?
+  openedBy          String
+  resolvedBy        String?
+  amount            Float?
+  reason            String?
+  status            DisputeStatus    @default(OPEN)
+  resolution        DisputeResolution?
+  resolutionNotes   String?
+  metadata          String?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  resolvedAt        DateTime?
+
+  opener            User             @relation("DisputeOpenedBy", fields: [openedBy], references: [id], onDelete: Cascade)
+  resolver          User?            @relation("DisputeResolvedBy", fields: [resolvedBy], references: [id], onDelete: SetNull)
+  payment           Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+  escrow            Escrow?          @relation(fields: [escrowId], references: [id], onDelete: SetNull)
+  investment        Investment?      @relation(fields: [investmentId], references: [id], onDelete: SetNull)
+}
+
+// Business Verification model - Manual verification workflow
+model BusinessVerification {
+  id                  String    @id @default(uuid())
+  businessId          String    @unique
+  status              String    @default("PENDING") // PENDING, IN_REVIEW, APPROVED, REJECTED, REQUIRES_ADDITIONAL_INFO
+  documents           Json      // Document URLs and metadata
+  additionalInfo      Json      // Additional business information
+  submittedBy         String    // Business owner ID
+  submittedAt         DateTime  @default(now())
+  reviewedBy          String?   // Admin user ID
+  reviewedAt           DateTime?
+  reviewNotes          String?
+  additionalDocumentsRequested String[] @default([])
+  approvedAt           DateTime?
+  rejectedAt           DateTime?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  business            Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  verifier            User?      @relation("VerifiedBusinesses", fields: [submittedBy], references: [id])
+  reviewer            User?      @relation("ReviewedVerifications", fields: [reviewedBy], references: [id])
+}
+
+// Terms and Conditions model
+model TermsAndConditions {
+  id                String    @id @default(uuid())
+  type              String    // INVESTOR, BUSINESS_OWNER, PLATFORM
+  version           String
+  content           String    // Full terms text
+  effectiveDate      DateTime
+  isCurrent         Boolean   @default(false)
+  createdBy         String    // Admin user ID
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  creator            User       @relation(fields: [createdBy], references: [id])
+  userAgreements     UserAgreement[]
+}
+
+// Disclaimer model
+model Disclaimer {
+  id                  String    @id @default(uuid())
+  type                String    // INVESTMENT_RISK, TAX_IMPLICATIONS, REGULATORY, PLATFORM_LIMITATIONS
+  title               String
+  content             String
+  requiredAcceptance  Boolean   @default(false)
+  applicableRoles     String[]  @default([])
+  createdBy           String    // Admin user ID
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  // Relations
+  creator            User       @relation(fields: [createdBy], references: [id])
+  userAgreements     UserAgreement[]
+}
+
+// User Agreement model
+model UserAgreement {
+  id                String    @id @default(uuid())
+  userId            String
+  termsId           String
+  disclaimerIds     String[]  @default([])
+  ipAddress         String
+  userAgent         String
+  acceptedAt        DateTime  @default(now())
+
+  // Relations
+  user              User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  terms             TermsAndConditions @relation(fields: [termsId], references: [id])
+  disclaimers       Disclaimer[]
+}
+
+// Watchlist model - Users can save businesses they're interested in
+model Watchlist {
+  id                String    @id @default(uuid())
+  userId            String
+  businessId        String
+  createdAt         DateTime  @default(now())
+
+  // Relations
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  business          Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, businessId]) // Each user can only watch a business once
+}
+
+// Mentor Session model - For mentorship services
+model MentorSession {
+  id                String    @id @default(uuid())
+  mentorId          String    // User with MENTOR role
+  menteeId          String    // User being mentored
+  businessId        String?   // Optional business context
+  title             String
+  description       String
+  scheduledDate     DateTime
+  duration          Int       // Duration in minutes
+  status            String    @default("SCHEDULED") // SCHEDULED, COMPLETED, CANCELLED
+  meetingLink       String?   // Video call link
+  notes             String?   // Session notes
+  fee               Float?    // Session fee
+  currency          String    @default("GHS")
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  mentor            User      @relation("MentorSessions", fields: [mentorId], references: [id])
+  mentee            User      @relation("MenteeSessions", fields: [menteeId], references: [id])
+  business          Business? @relation(fields: [businessId], references: [id])
+}
+
+// Message model - Secure messaging between users
+model Message {
+  id                String    @id @default(uuid())
+  senderId          String
+  receiverId        String
+  businessId        String?   // Optional business context
+  subject           String?
+  content           String
+  type              String    @default("TEXT") // TEXT, FILE, SYSTEM
+  messageType       String?   // Optional message type for more granular control
+  isRead            Boolean   @default(false)
+  readAt            DateTime? // When message was read
+  isEncrypted       Boolean   @default(true)
+  attachmentUrl     String?   // For file messages
+  attachmentName    String?   // Original file name
+  parentMessageId   String?   // For threaded conversations
+  deletedAt         DateTime? // Soft delete timestamp
+  deletedBy         String?   // User who deleted the message
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  sender            User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  receiver          User      @relation("ReceivedMessages", fields: [receiverId], references: [id], onDelete: Cascade)
+  business          Business? @relation(fields: [businessId], references: [id])
+  parentMessage     Message?  @relation("MessageReplies", fields: [parentMessageId], references: [id])
+  replies           Message[] @relation("MessageReplies")
+}
+
+// Commission model - Platform commissions from investments
+model Commission {
+  id                String    @id @default(uuid())
+  investmentId      String
+  commissionRate    Float     // Percentage
+  commissionAmount  Float     // Actual amount
+  commissionType    String    // PLATFORM_FEE, SUCCESS_FEE, PREMIUM_FEATURE
+  description       String?
+  status            String    @default("PENDING") // PENDING, PAID, CANCELLED
+  paidAt            DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  investment        Investment @relation(fields: [investmentId], references: [id])
+}
+
+// Subscription model - User subscription tiers
+model Subscription {
+  id                String    @id @default(uuid())
+  userId            String
+  tier              String    // BASIC, PREMIUM, ENTERPRISE
+  price             Float
+  startDate         DateTime
+  endDate           DateTime
+  status            String    @default("ACTIVE") // ACTIVE, CANCELLED, EXPIRED
+  paymentMethod     String
+  cancelledAt       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  user              User      @relation("UserSubscriptions", fields: [userId], references: [id])
+}
+
+// Promotion model - Business promotional features
+model Promotion {
+  id                String    @id @default(uuid())
+  businessId        String
+  promotionType     String    // FEATURED_LISTING, SPONSORED_PLACEMENT, BANNER_AD
+  duration          Int       // Duration in days
+  price             Float
+  description       String?
+  startDate         DateTime
+  endDate           DateTime
+  status            String    @default("ACTIVE") // ACTIVE, EXPIRED, CANCELLED
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  business          Business  @relation("BusinessPromotions", fields: [businessId], references: [id])
+}
+
+// Question model - Q&A system for businesses
+model Question {
+  id                String    @id @default(uuid())
+  businessId        String
+  userId            String    // User who asked the question
+  question          String
+  isAnonymous       Boolean   @default(false)
+  status            String    @default("PENDING") // PENDING, ANSWERED, REJECTED
+  answer            String?
+  answeredBy        String?   // Admin or business owner who answered
+  answeredAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  business          Business  @relation("BusinessQuestions", fields: [businessId], references: [id])
+  user              User      @relation("UserQuestions", fields: [userId], references: [id])
+  answerer          User?      @relation("AnsweredQuestions", fields: [answeredBy], references: [id])
+  answers           Answer[]
+}
+
+// Answer model - Answers to questions
+model Answer {
+  id                String    @id @default(uuid())
+  questionId        String
+  userId            String    // User who answered
+  answer            String
+  attachments       Json?     // File URLs and metadata
+  isAnonymous       Boolean   @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  question          Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  user              User      @relation("UserAnswers", fields: [userId], references: [id])
+}
+
+// ProgressUpdate model - Business progress updates
+model ProgressUpdate {
+  id                String    @id @default(uuid())
+  businessId        String
+  title             String
+  content           String
+  type              String    // MILESTONE, FINANCIAL, GENERAL
+  attachments       Json?     // File URLs and metadata
+  isPublic          Boolean   @default(true)
+  postedBy          String    // Business owner or admin
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  // Relations
+  business          Business  @relation("BusinessUpdates", fields: [businessId], references: [id])
+  poster            User      @relation("PostedUpdates", fields: [postedBy], references: [id])
 }
 

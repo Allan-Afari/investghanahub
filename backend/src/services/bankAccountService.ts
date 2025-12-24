@@ -41,6 +41,11 @@ interface AddBankAccountData {
   accountNumber: string;
   bankCode: string;
   accountType: 'SAVINGS' | 'CHECKING';
+  paystackValidation?: {
+    account_name: string;
+    bank_id: string;
+    verified_at: Date;
+  };
 }
 
 interface BankAccountResponse {

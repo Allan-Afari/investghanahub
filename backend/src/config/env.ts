@@ -32,6 +32,8 @@ interface EnvConfig {
   SMTP_PORT?: number;
   SMTP_USER?: string;
   SMTP_PASS?: string;
+  RESEND_API_KEY?: string;
+  FROM_EMAIL?: string;
 
   // Paystack
   PAYSTACK_SECRET_KEY?: string;
@@ -95,6 +97,8 @@ function validateEnv(): EnvConfig {
     SMTP_PORT: parseInt(getEnvVar('SMTP_PORT', false) || '587', 10),
     SMTP_USER: getEnvVar('SMTP_USER', false),
     SMTP_PASS: getEnvVar('SMTP_PASS', false),
+    RESEND_API_KEY: getEnvVar('RESEND_API_KEY', false),
+    FROM_EMAIL: getEnvVar('FROM_EMAIL', false),
     PAYSTACK_SECRET_KEY: getEnvVar('PAYSTACK_SECRET_KEY', false) || undefined,
     PAYSTACK_PUBLIC_KEY: getEnvVar('PAYSTACK_PUBLIC_KEY', false) || undefined,
     CLOUDINARY_CLOUD_NAME: getEnvVar('CLOUDINARY_CLOUD_NAME', false),

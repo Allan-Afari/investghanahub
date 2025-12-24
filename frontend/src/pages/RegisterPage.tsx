@@ -76,7 +76,7 @@ export default function RegisterPage() {
       newErrors.email = 'Please enter a valid email';
     }
 
-    if (formData.phone && !/^(\+233|0)\d{9}$/.test(formData.phone)) {
+    if (formData.phone && !/^(\+233|0)[2-5][0-9]{8}$/.test(formData.phone)) {
       newErrors.phone = 'Please enter a valid Ghana phone number';
     }
 
@@ -84,8 +84,8 @@ export default function RegisterPage() {
       newErrors.password = 'Password is required';
     } else if (formData.password.length < 8) {
       newErrors.password = 'Password must be at least 8 characters';
-    } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
-      newErrors.password = 'Password must contain uppercase, lowercase, and number';
+    } else if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])/.test(formData.password)) {
+      newErrors.password = 'Password must contain uppercase, lowercase, number, and special character';
     }
 
     if (formData.password !== formData.confirmPassword) {
@@ -148,9 +148,20 @@ export default function RegisterPage() {
       // Handle validation errors from backend
       if (err.response?.data?.errors) {
         const backendErrors: Record<string, string> = {};
-        err.response.data.errors.forEach((fieldError) => {
-          if (fieldError.path) {
-            backendErrors[fieldError.path] = fieldError.msg;
+        err.response.data.errors.forEach((fieldError: any) => {
+          const path = fieldError?.path ?? fieldError?.field;
+          const msg = fieldError?.msg ?? fieldError?.message;
+
+          if (path && msg) {
+            backendErrors[path] = msg;
+            return;
+          }
+
+          if (!path && typeof fieldError === 'object' && fieldError) {
+            const entries = Object.entries(fieldError);
+            for (const [k, v] of entries) {
+              if (typeof v === 'string') backendErrors[k] = v;
+            }
           }
         });
         setErrors(backendErrors);

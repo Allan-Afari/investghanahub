@@ -168,6 +168,16 @@ class PaymentService {
         throw new Error('Payment not found');
       }
 
+      // Idempotency: if we've already processed this payment, don't re-credit the wallet.
+      if (payment.status === 'SUCCESS') {
+        return {
+          success: true,
+          status: 'SUCCESS',
+          amount: payment.amount,
+          reference,
+        };
+      }
+
       if (paymentData.status === 'success') {
         // Update payment status
         await prisma.payment.update({
@@ -178,9 +188,15 @@ class PaymentService {
           },
         });
 
-        // Credit user's wallet
+        // Credit user's wallet (idempotent by walletTransaction reference)
         if (payment.type === 'DEPOSIT') {
-          await this.creditWallet(payment.userId, payment.amount, reference);
+          const existingWalletTx = await prisma.walletTransaction.findUnique({
+            where: { reference: `WT-${reference}` },
+          });
+
+          if (!existingWalletTx) {
+            await this.creditWallet(payment.userId, payment.amount, reference);
+          }
         }
 
         // Get user for email

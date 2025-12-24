@@ -5,9 +5,25 @@
 
 import axios, { AxiosInstance, AxiosError } from 'axios';
 import toast from 'react-hot-toast';
+import { offlineAuth } from './offlineAuth';
 
 // API base URL
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const API_BASE_URL = 'http://192.168.8.156:5000/api';
+
+const isOfflineModeEnabled = () => import.meta.env.VITE_OFFLINE_MODE === 'true';
+
+const shouldFallbackToOfflineAuth = (error: unknown) => {
+  if (isOfflineModeEnabled()) return true;
+
+  if (!axios.isAxiosError(error)) return false;
+
+  // When the backend is unreachable from a mobile device, Axios usually has no response
+  // (e.g. Network Error / timeout). We only fallback on those cases.
+  const err = error as AxiosError;
+  const isTimeout = err.code === 'ECONNABORTED';
+  const hasNoResponse = !err.response;
+  return isTimeout || hasNoResponse;
+};
 
 // Create axios instance
 const api: AxiosInstance = axios.create({
@@ -72,8 +88,22 @@ export const authAPI = {
     phone?: string;
     role?: 'INVESTOR' | 'BUSINESS_OWNER';
   }) => {
-    const response = await api.post('/auth/register', data);
-    return response.data;
+    try {
+      const response = await api.post('/auth/register', data);
+      return response.data;
+    } catch (error: unknown) {
+      if (shouldFallbackToOfflineAuth(error)) {
+        return offlineAuth.register({
+          email: data.email,
+          password: data.password,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          phone: data.phone,
+          role: data.role ?? 'INVESTOR',
+        });
+      }
+      throw error;
+    }
   },
 
   // Dedicated investor registration
@@ -84,8 +114,22 @@ export const authAPI = {
     lastName: string;
     phone?: string;
   }) => {
-    const response = await api.post('/auth/register/investor', data);
-    return response.data;
+    try {
+      const response = await api.post('/auth/register/investor', data);
+      return response.data;
+    } catch (error: unknown) {
+      if (shouldFallbackToOfflineAuth(error)) {
+        return offlineAuth.register({
+          email: data.email,
+          password: data.password,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          phone: data.phone,
+          role: 'INVESTOR',
+        });
+      }
+      throw error;
+    }
   },
 
   // Dedicated business owner registration
@@ -96,28 +140,70 @@ export const authAPI = {
     lastName: string;
     phone?: string;
   }) => {
-    const response = await api.post('/auth/register/business-owner', data);
-    return response.data;
+    try {
+      const response = await api.post('/auth/register/business-owner', data);
+      return response.data;
+    } catch (error: unknown) {
+      if (shouldFallbackToOfflineAuth(error)) {
+        return offlineAuth.register({
+          email: data.email,
+          password: data.password,
+          firstName: data.firstName,
+          lastName: data.lastName,
+          phone: data.phone,
+          role: 'BUSINESS_OWNER',
+        });
+      }
+      throw error;
+    }
   },
 
   login: async (email: string, password: string) => {
-    const response = await api.post('/auth/login', { email, password });
-    return response.data;
+    try {
+      const response = await api.post('/auth/login', { email, password });
+      return response.data;
+    } catch (error: unknown) {
+      if (shouldFallbackToOfflineAuth(error)) {
+        return offlineAuth.login(email, password);
+      }
+      throw error;
+    }
   },
 
   getProfile: async () => {
-    const response = await api.get('/auth/profile');
-    return response.data;
+    try {
+      const response = await api.get('/auth/profile');
+      return response.data;
+    } catch (error: unknown) {
+      if (shouldFallbackToOfflineAuth(error)) {
+        return offlineAuth.getProfile();
+      }
+      throw error;
+    }
   },
 
   updateProfile: async (data: { firstName?: string; lastName?: string; phone?: string }) => {
-    const response = await api.put('/auth/profile', data);
-    return response.data;
+    try {
+      const response = await api.put('/auth/profile', data);
+      return response.data;
+    } catch (error: unknown) {
+      if (shouldFallbackToOfflineAuth(error)) {
+        return offlineAuth.updateProfile(data);
+      }
+      throw error;
+    }
   },
 
   changePassword: async (currentPassword: string, newPassword: string) => {
-    const response = await api.post('/auth/change-password', { currentPassword, newPassword });
-    return response.data;
+    try {
+      const response = await api.post('/auth/change-password', { currentPassword, newPassword });
+      return response.data;
+    } catch (error: unknown) {
+      if (shouldFallbackToOfflineAuth(error)) {
+        return offlineAuth.changePassword(currentPassword, newPassword);
+      }
+      throw error;
+    }
   },
 };
 

@@ -1,20 +1,66 @@
 /**
  * Email Service for InvestGhanaHub
- * Handles all email notifications using Nodemailer
+ * Handles all email notifications using Nodemailer and Resend
  */
 
 import nodemailer from 'nodemailer';
+import { Resend } from 'resend';
+import { env } from '../config/env';
 
-// Email configuration
+// Resend client (if configured)
+const resend = env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
+const fromEmail = env.FROM_EMAIL || 'noreply@investghanahub.com';
+
+// Nodemailer transporter (fallback)
 const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
+  host: env.SMTP_HOST || 'smtp.gmail.com',
+  port: Number(env.SMTP_PORT || '587'),
   secure: false, // true for 465, false for other ports
   auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+    user: env.SMTP_USER,
+    pass: env.SMTP_PASS,
   },
 });
+
+// Helper to send via Resend or Nodemailer
+const sendViaProvider = async (to: string | string[], subject: string, html: string, text?: string) => {
+  if (resend) {
+    try {
+      const { data, error } = await resend.emails.send({
+        from: `InvestGhanaHub <${fromEmail}>`,
+        to: Array.isArray(to) ? to : [to],
+        subject,
+        html,
+        text,
+      });
+      if (error) {
+        console.error('Resend failed:', error);
+        return false;
+      }
+      console.log('Email sent via Resend:', data);
+      return true;
+    } catch (err) {
+      console.error('Resend error:', err);
+      // Fallback to Nodemailer
+    }
+  }
+
+  // Nodemailer fallback
+  try {
+    await transporter.sendMail({
+      from: `"InvestGhanaHub" <${env.SMTP_USER}>`,
+      to: Array.isArray(to) ? to : [to],
+      subject,
+      html,
+      text,
+    });
+    console.log('Email sent via Nodemailer');
+    return true;
+  } catch (err) {
+    console.error('Nodemailer error:', err);
+    return false;
+  }
+};
 
 // Email templates
 const emailTemplates = {
@@ -365,14 +411,11 @@ class EmailService {
   async sendWelcomeEmail(email: string, firstName: string): Promise<boolean> {
     try {
       const template = emailTemplates.welcome(firstName);
-      await transporter.sendMail({
-        from: `"InvestGhanaHub" <${process.env.SMTP_USER}>`,
-        to: email,
-        subject: template.subject,
-        html: template.html,
-      });
-      console.log(`✉️ Welcome email sent to ${email}`);
-      return true;
+      const success = await sendViaProvider(email, template.subject, template.html);
+      if (success) {
+        console.log(`✉️ Welcome email sent to ${email}`);
+      }
+      return success;
     } catch (error) {
       console.error('Failed to send welcome email:', error);
       return false;

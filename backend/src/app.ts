@@ -22,14 +22,25 @@ import kycImageVerificationRoutes from './routes/kycImageVerificationRoutes';
 import capitalRaisingRoutes from './routes/capitalRaisingRoutes';
 import businessRoutes from './routes/businessRoutes';
 import investmentRoutes from './routes/investmentRoutes';
+import investmentTrackingRoutes from './routes/investmentTrackingRoutes';
+import watchlistRoutes from './routes/watchlistRoutes';
 import adminRoutes from './routes/adminRoutes';
 import passwordRoutes from './routes/passwordRoutes';
 import walletRoutes from './routes/walletRoutes';
 import uploadRoutes from './routes/uploadRoutes';
 import otpRoutes from './routes/otpRoutes';
 import notificationRoutes from './routes/notificationRoutes';
+import paymentRoutes from './routes/paymentRoutes';
+import escrowRoutes from './routes/escrowRoutes';
+import businessVerificationRoutes from './routes/businessVerificationRoutes';
+import legalComplianceRoutes from './routes/legalComplianceRoutes';
 import bankAccountRoutes from './routes/bankAccountRoutes';
 import profitRoutes from './routes/profitRoutes';
+import messagingRoutes from './routes/messagingRoutes';
+import qaRoutes from './routes/qaRoutes';
+import analyticsRoutes from './routes/analyticsRoutes';
+import monetizationRoutes from './routes/monetizationRoutes';
+import disputeRoutes from './routes/disputeRoutes';
 
 // Initialize Express application
 const app: Application = express();
@@ -109,6 +120,7 @@ app.use(limiter);
 // BODY PARSING MIDDLEWARE
 // ===========================================
 
+app.use('/api/payments/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
@@ -144,6 +156,8 @@ app.use('/api/kyc', kycImageVerificationRoutes);  // Image verification routes
 app.use('/api', kycWebhookRoutes);  // Webhook routes (includes /api/webhooks/kyc/callback and /api/admin/kyc/*)
 app.use('/api/businesses', businessRoutes);
 app.use('/api/investments', investmentRoutes);
+app.use('/api/investments', investmentTrackingRoutes); // Investment tracking and analytics
+app.use('/api/watchlist', watchlistRoutes); // Watchlist functionality
 app.use('/api/admin', adminRoutes);
 app.use('/api/password', passwordRoutes);
 app.use('/api/wallet', walletRoutes);
@@ -151,7 +165,16 @@ app.use('/api/upload', uploadLimiter, validateFileUpload, uploadRoutes);
 app.use('/api/otp', otpRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/bank-accounts', bankAccountRoutes);
+app.use('/api/payments', paymentRoutes);
+app.use('/api/escrow', escrowRoutes);
+app.use('/api/business-verification', businessVerificationRoutes);
+app.use('/api/legal', legalComplianceRoutes);
 app.use('/api/profits', profitRoutes);
+app.use('/api/messages', messagingRoutes); // Secure messaging
+app.use('/api/qa', qaRoutes); // Q&A and progress updates
+app.use('/api/analytics', analyticsRoutes); // Analytics and dashboards
+app.use('/api/monetization', monetizationRoutes); // Monetization and revenue
+app.use('/api/disputes', disputeRoutes);
 
 // ===========================================
 // OPTIONAL FRONTEND SERVING (PRODUCTION)

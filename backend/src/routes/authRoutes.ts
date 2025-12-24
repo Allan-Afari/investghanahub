@@ -6,6 +6,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { authService } from '../services/authService';
 import { authMiddleware } from '../middleware/authMiddleware';
+import { emailService } from '../services/emailService';
 import {
   validate,
   registerValidationSchema,
@@ -24,6 +25,20 @@ const updateProfileSchema = Joi.object({
   firstName: Joi.string().min(2).max(50).trim().optional(),
   lastName: Joi.string().min(2).max(50).trim().optional(),
   phone: Joi.string().pattern(/^(\+233|0)[2-5][0-9]{8}$/).optional(),
+  bio: Joi.string().max(500).optional(),
+  expertise: Joi.string().max(100).optional(),
+  experience: Joi.string().max(300).optional(),
+  website: Joi.string().uri().optional(),
+  linkedin: Joi.string().uri().optional(),
+});
+
+const verificationStatusSchema = Joi.object({
+  status: Joi.string().valid('UNVERIFIED', 'VERIFIED', 'PREMIUM', 'REJECTED').required(),
+});
+
+const upgradePremiumSchema = Joi.object({
+  tier: Joi.string().valid('PREMIUM', 'VIP').required(),
+  duration: Joi.number().integer().min(1).max(12).required(), // 1-12 months
 });
 
 const changePasswordSchema = Joi.object({
@@ -64,6 +79,9 @@ router.post(
         phone,
         role: role || 'INVESTOR'
       });
+
+      // Send welcome email
+      await emailService.sendWelcomeEmail(email, firstName);
 
       // Set auth cookie (HttpOnly) for enhanced security
       res.cookie('token', result.token, {
@@ -315,6 +333,99 @@ router.post(
       success: true,
       message: 'Logged out successfully'
     });
+  }
+);
+
+/**
+ * PUT /api/auth/verification-status
+ * Update user verification status (Admin only)
+ */
+router.put(
+  '/verification-status/:userId',
+  authMiddleware,
+  validate(verificationStatusSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUser = (req as any).user;
+      
+      // Check if user is admin
+      if (adminUser.role !== 'ADMIN') {
+        const error = new Error('Admin access required') as any;
+        error.statusCode = 403;
+        throw error;
+      }
+
+      const { userId } = req.params;
+      const { status } = req.body;
+
+      const user = await authService.updateVerificationStatus(userId, status, adminUser.id);
+
+      res.status(200).json({
+        success: true,
+        message: `User verification status updated to ${status}`,
+        data: user
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * POST /api/auth/upgrade-premium
+ * Upgrade user to premium tier
+ */
+router.post(
+  '/upgrade-premium',
+  authMiddleware,
+  validate(upgradePremiumSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = (req as any).user.id;
+      const { tier, duration } = req.body;
+
+      const user = await authService.upgradeToPremium(userId, tier, duration);
+
+      res.status(200).json({
+        success: true,
+        message: `Successfully upgraded to ${tier} tier for ${duration} months`,
+        data: user
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * GET /api/auth/users/by-verification-status/:status
+ * Get users by verification status (Admin only)
+ */
+router.get(
+  '/users/by-verification-status/:status',
+  authMiddleware,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const adminUser = (req as any).user;
+      
+      // Check if user is admin
+      if (adminUser.role !== 'ADMIN') {
+        const error = new Error('Admin access required') as any;
+        error.statusCode = 403;
+        throw error;
+      }
+
+      const { status } = req.params;
+      const users = await authService.getUsersByVerificationStatus(status as any);
+
+      res.status(200).json({
+        success: true,
+        data: users,
+        count: users.length
+      });
+    } catch (error) {
+      next(error);
+    }
   }
 );
 
