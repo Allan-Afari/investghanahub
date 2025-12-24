@@ -19,21 +19,26 @@ export default function FormInput({
   ...props
 }: FormInputProps) {
   return (
-    <div className="w-full">
-      <label htmlFor={props.name} className="label">
+    <div className="w-full mb-4">
+      <label htmlFor={props.name} className="block text-sm font-medium text-gray-700 mb-1">
         {label}
         {props.required && <span className="text-ghana-red-500 ml-1">*</span>}
       </label>
       <input
         id={props.name}
-        className={`input ${error ? 'input-error' : ''} ${className}`}
+        className={`
+          w-full px-4 py-2 border rounded-md shadow-sm text-gray-900
+          focus:ring-2 focus:ring-ghana-gold-500 focus:border-ghana-gold-500
+          ${error ? 'border-ghana-red-500' : 'border-gray-300'}
+          ${className}
+        `}
         {...props}
       />
       {helpText && !error && (
-        <p className="text-xs text-dark-500 mt-1">{helpText}</p>
+        <p className="mt-1 text-sm text-gray-500">{helpText}</p>
       )}
       {error && (
-        <p className="text-sm text-ghana-red-400 mt-1">{error}</p>
+        <p className="mt-1 text-sm text-ghana-red-600">{error}</p>
       )}
     </div>
   );

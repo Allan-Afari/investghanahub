@@ -31,15 +31,14 @@ const toHex = (bytes: Uint8Array) =>
     .join('');
 
 const hashPassword = async (password: string) => {
+  if (typeof crypto === 'undefined' || !crypto.subtle) return `plain:${password}`;
   try {
-    if (typeof crypto !== 'undefined' && crypto.subtle) {
-      const data = new TextEncoder().encode(password);
-      const digest = await crypto.subtle.digest('SHA-256', data);
-      return toHex(new Uint8Array(digest));
-    }
-  } catch {
+    const data = new TextEncoder().encode(password);
+    const digest = await crypto.subtle.digest('SHA-256', data);
+    return toHex(new Uint8Array(digest));
+  } catch (_e) {
+    return `plain:${password}`;
   }
-  return `plain:${password}`;
 };
 
 const loadUsers = (): StoredUser[] => {
@@ -58,13 +57,14 @@ const saveUsers = (users: StoredUser[]) => {
 };
 
 const makeAxiosLikeError = (message: string) => {
-  const err: any = new Error(message);
+  const err = new Error(message) as Error & { response?: { data: { message: string } } };
   err.response = { data: { message } };
   return err;
 };
 
 const withoutPassword = (u: StoredUser): OfflineUser => {
-  const { passwordHash: _passwordHash, ...rest } = u;
+  const { passwordHash, ...rest } = u;
+  void passwordHash;
   return rest;
 };
 

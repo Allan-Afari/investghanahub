@@ -39,6 +39,15 @@ export const errorMiddleware = (
     return;
   }
 
+  // Handle invalid JSON body (body-parser)
+  if (err instanceof SyntaxError && 'body' in err) {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid JSON in request body',
+    });
+    return;
+  }
+
   if ((err as any).code === 'P2025') {
     res.status(404).json({
       success: false,

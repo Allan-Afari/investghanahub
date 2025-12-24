@@ -101,12 +101,28 @@
            hover:-translate-y-1 cursor-pointer;
   }
 
-  /* Input styles */
-  .input {
-    @apply w-full px-4 py-3 bg-dark-800/50 border border-dark-700 rounded-xl
-           text-dark-100 placeholder-dark-500
-           focus:outline-none focus:ring-2 focus:ring-ghana-gold-500/50 focus:border-ghana-gold-500
-           transition-all duration-200;
+  /* Form inputs */
+  .input, .select, .textarea, input[type="text"], input[type="email"], input[type="password"], input[type="number"], input[type="tel"], textarea, select {
+    @apply w-full px-4 py-3 bg-dark-700/50 border border-dark-500 rounded-lg text-dark-100 placeholder-dark-400
+           focus:outline-none focus:ring-2 focus:ring-ghana-gold-500 focus:border-ghana-gold-500/50
+           transition-all duration-200 shadow-sm;
+    backdrop-filter: blur(4px);
+  }
+  
+  /* Input focus state */
+  .input:focus, .select:focus, .textarea:focus, 
+  input[type="text"]:focus, input[type="email"]:focus, 
+  input[type="password"]:focus, input[type="number"]:focus, 
+  input[type="tel"]:focus, textarea:focus, select:focus {
+    @apply bg-dark-600/50 border-ghana-gold-500/70 shadow-ghana-gold-500/20 shadow-md;
+  }
+  
+  /* Input hover state */
+  .input:hover, .select:hover, .textarea:hover, 
+  input[type="text"]:hover, input[type="email"]:hover, 
+  input[type="password"]:hover, input[type="number"]:hover, 
+  input[type="tel"]:hover, textarea:hover, select:hover {
+    @apply border-dark-400 bg-dark-600/30;
   }
 
   .input-error {
@@ -121,9 +137,24 @@
     background-size: 1.25rem;
   }
 
-  /* Label */
+  /* Form labels */
   .label {
-    @apply block text-sm font-medium text-dark-300 mb-2;
+    @apply block text-sm font-medium text-ghana-gold-400 mb-2;
+  }
+  
+  /* Form group */
+  .form-group {
+    @apply mb-5;
+  }
+  
+  /* Form help text */
+  .help-text {
+    @apply mt-1 text-sm text-dark-400;
+  }
+  
+  /* Form error message */
+  .error-message {
+    @apply mt-1 text-sm text-ghana-red-400;
   }
 
   /* Badge styles */

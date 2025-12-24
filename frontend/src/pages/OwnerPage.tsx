@@ -443,9 +443,9 @@ export default function OwnerPage() {
 
         {/* Business Form Modal */}
         {showBusinessForm && (
-          <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
-            <div className="card max-w-lg w-full my-8 animate-slide-up">
-              <h3 className="text-xl font-display font-bold mb-6">Add New Business</h3>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-lg shadow-xl max-w-lg w-full my-8 p-6 animate-slide-up">
+              <h3 className="text-2xl font-bold text-gray-900 mb-6">Add New Business</h3>
               
               <form onSubmit={handleSubmitBusiness} className="space-y-4">
                 <FormInput
@@ -465,20 +465,20 @@ export default function OwnerPage() {
                     onChange={handleBusinessChange}
                     placeholder="Describe your business..."
                     rows={3}
-                    className={`input ${businessErrors.description ? 'border-ghana-red-500' : ''}`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900 focus:ring-2 focus:ring-ghana-gold-500 focus:border-ghana-gold-500 ${businessErrors.description ? 'border-ghana-red-500' : ''}`}
                   />
                   {businessErrors.description && (
                     <p className="text-sm text-ghana-red-400 mt-1">{businessErrors.description}</p>
                   )}
                 </div>
 
-                <div>
-                  <label className="label">Category</label>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
                   <select
                     name="category"
                     value={businessFormData.category}
                     onChange={handleBusinessChange}
-                    className="select"
+                    className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900 focus:ring-2 focus:ring-ghana-gold-500 focus:border-ghana-gold-500"
                   >
                     <option value="crops">Agriculture (Crops)</option>
                     <option value="startup">Startup</option>
@@ -495,13 +495,13 @@ export default function OwnerPage() {
                   error={businessErrors.location}
                 />
 
-                <div>
-                  <label className="label">Region</label>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Region</label>
                   <select
                     name="region"
                     value={businessFormData.region}
                     onChange={handleBusinessChange}
-                    className={`select ${businessErrors.region ? 'border-ghana-red-500' : ''}`}
+                    className={`w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900 focus:ring-2 focus:ring-ghana-gold-500 focus:border-ghana-gold-500 ${businessErrors.region ? 'border-ghana-red-500' : ''}`}
                   >
                     <option value="">Select region</option>
                     {ghanaRegions.map(r => (
@@ -634,7 +634,7 @@ export default function OwnerPage() {
                       name="riskLevel"
                       value={opportunityFormData.riskLevel}
                       onChange={handleOpportunityChange}
-                      className="select"
+                      className="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm text-gray-900 focus:ring-2 focus:ring-ghana-gold-500 focus:border-ghana-gold-500"
                     >
                       <option value="low">Low</option>
                       <option value="medium">Medium</option>

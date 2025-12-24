@@ -30,7 +30,7 @@ type Role = 'INVESTOR' | 'BUSINESS_OWNER';
 export default function RegisterPage() {
   const navigate = useNavigate();
   const { login } = useAuth();
-  
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -117,18 +117,18 @@ export default function RegisterPage() {
         phone: formData.phone || undefined,
         password: formData.password
       });
-      
+
       if (response.success) {
         login(response.data.user, response.data.token);
         toast.success(response.message || 'Account created successfully!');
-        
+
         // Role-based navigation
         if (formData.role === 'INVESTOR') {
-          navigate('/kyc', { 
-            state: { 
+          navigate('/kyc', {
+            state: {
               message: 'Complete KYC verification to start investing',
               role: 'investor'
-            } 
+            }
           });
         } else {
           // Business owner goes to capital raising registration
@@ -144,13 +144,24 @@ export default function RegisterPage() {
       const err = error as ApiErrorShape;
       const message = err.response?.data?.message || 'Registration failed. Please try again.';
       toast.error(message);
-      
+
       // Handle validation errors from backend
       if (err.response?.data?.errors) {
         const backendErrors: Record<string, string> = {};
-        err.response.data.errors.forEach((fieldError: any) => {
-          const path = fieldError?.path ?? fieldError?.field;
-          const msg = fieldError?.msg ?? fieldError?.message;
+        err.response.data.errors.forEach((fieldError: unknown) => {
+          const maybeObj = fieldError as { path?: unknown; field?: unknown; msg?: unknown; message?: unknown };
+          const path =
+            typeof maybeObj?.path === 'string'
+              ? maybeObj.path
+              : typeof maybeObj?.field === 'string'
+                ? maybeObj.field
+                : undefined;
+          const msg =
+            typeof maybeObj?.msg === 'string'
+              ? maybeObj.msg
+              : typeof maybeObj?.message === 'string'
+                ? maybeObj.message
+                : undefined;
 
           if (path && msg) {
             backendErrors[path] = msg;
@@ -177,7 +188,7 @@ export default function RegisterPage() {
       <div className="hidden lg:flex flex-1 bg-gradient-to-br from-dark-900 via-dark-800 to-dark-900 items-center justify-center p-12 relative overflow-hidden">
         {/* Background pattern */}
         <div className="absolute inset-0 bg-ghana-pattern opacity-20" />
-        
+
         {/* Gradient orbs */}
         <div className="absolute top-20 left-20 w-64 h-64 bg-ghana-gold-500/20 rounded-full blur-3xl" />
         <div className="absolute bottom-20 right-20 w-64 h-64 bg-ghana-green-500/20 rounded-full blur-3xl" />
@@ -192,7 +203,7 @@ export default function RegisterPage() {
           <p className="text-dark-400 mb-8">
             Whether you want to invest or raise capital for your business, InvestGhanaHub connects you with opportunities.
           </p>
-          
+
           {/* Features */}
           <div className="space-y-4 text-left">
             {[
@@ -234,36 +245,30 @@ export default function RegisterPage() {
               <button
                 type="button"
                 onClick={() => handleRoleChange('INVESTOR')}
-                className={`p-4 rounded-xl border-2 transition-all ${
-                  formData.role === 'INVESTOR'
+                className={`p-4 rounded-xl border-2 transition-all ${formData.role === 'INVESTOR'
                     ? 'border-ghana-gold-500 bg-ghana-gold-500/10'
                     : 'border-dark-700 hover:border-dark-600'
-                }`}
+                  }`}
               >
-                <User className={`w-6 h-6 mx-auto mb-2 ${
-                  formData.role === 'INVESTOR' ? 'text-ghana-gold-500' : 'text-dark-400'
-                }`} />
-                <span className={`block text-sm font-medium ${
-                  formData.role === 'INVESTOR' ? 'text-ghana-gold-500' : 'text-dark-300'
-                }`}>
+                <User className={`w-6 h-6 mx-auto mb-2 ${formData.role === 'INVESTOR' ? 'text-ghana-gold-500' : 'text-dark-400'
+                  }`} />
+                <span className={`block text-sm font-medium ${formData.role === 'INVESTOR' ? 'text-ghana-gold-500' : 'text-dark-300'
+                  }`}>
                   Invest
                 </span>
               </button>
               <button
                 type="button"
                 onClick={() => handleRoleChange('BUSINESS_OWNER')}
-                className={`p-4 rounded-xl border-2 transition-all ${
-                  formData.role === 'BUSINESS_OWNER'
+                className={`p-4 rounded-xl border-2 transition-all ${formData.role === 'BUSINESS_OWNER'
                     ? 'border-ghana-gold-500 bg-ghana-gold-500/10'
                     : 'border-dark-700 hover:border-dark-600'
-                }`}
+                  }`}
               >
-                <Briefcase className={`w-6 h-6 mx-auto mb-2 ${
-                  formData.role === 'BUSINESS_OWNER' ? 'text-ghana-gold-500' : 'text-dark-400'
-                }`} />
-                <span className={`block text-sm font-medium ${
-                  formData.role === 'BUSINESS_OWNER' ? 'text-ghana-gold-500' : 'text-dark-300'
-                }`}>
+                <Briefcase className={`w-6 h-6 mx-auto mb-2 ${formData.role === 'BUSINESS_OWNER' ? 'text-ghana-gold-500' : 'text-dark-400'
+                  }`} />
+                <span className={`block text-sm font-medium ${formData.role === 'BUSINESS_OWNER' ? 'text-ghana-gold-500' : 'text-dark-300'
+                  }`}>
                   Raise Capital
                 </span>
               </button>
