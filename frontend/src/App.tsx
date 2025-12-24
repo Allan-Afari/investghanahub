@@ -16,6 +16,7 @@ const InvestorPage = lazy(() => import('./pages/InvestorPage'));
 const OwnerPage = lazy(() => import('./pages/OwnerPage'));
 const AdminPage = lazy(() => import('./pages/AdminPage'));
 const WalletPage = lazy(() => import('./pages/WalletPage'));
+const PaymentCallbackPage = lazy(() => import('./pages/PaymentCallbackPage'));
 const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 const TermsPage = lazy(() => import('./pages/TermsPage'));
@@ -183,6 +184,7 @@ function App() {
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/terms" element={<TermsPage />} />
               <Route path="/privacy" element={<PrivacyPage />} />
+              <Route path="/payment/callback" element={<PaymentCallbackPage />} />
 
               {/* Protected Routes */}
               <Route

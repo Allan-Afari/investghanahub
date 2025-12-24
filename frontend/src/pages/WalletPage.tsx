@@ -4,10 +4,10 @@
  */
 
 import { useState, useEffect } from 'react';
-import { 
-  Wallet, 
-  ArrowDownLeft, 
-  ArrowUpRight, 
+import {
+  Wallet,
+  ArrowDownLeft,
+  ArrowUpRight,
   Loader2,
   CreditCard,
   Smartphone,
@@ -16,9 +16,9 @@ import {
 import toast from 'react-hot-toast';
 import { useAuth } from '../App';
 import FormInput from '../components/FormInput';
+import api from '../utils/api';
 
-// API base URL
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+// API client is configured with dynamic base URL and auth token
 
 interface WalletData {
   id: string;
@@ -40,13 +40,13 @@ export default function WalletPage() {
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'history'>('deposit');
-  
+
   // Deposit form
   const [depositAmount, setDepositAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('MOMO_MTN');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [isDepositing, setIsDepositing] = useState(false);
-  
+
   // Withdraw form
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawPhone, setWithdrawPhone] = useState('');
@@ -59,10 +59,7 @@ export default function WalletPage() {
 
   const fetchWallet = async () => {
     try {
-      const response = await fetch(`${API_URL}/wallet`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const data = await response.json();
+      const { data } = await api.get('/wallet');
       if (data.success) {
         setWallet(data.data);
       }
@@ -75,7 +72,7 @@ export default function WalletPage() {
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const amount = parseFloat(depositAmount);
     if (isNaN(amount) || amount < 10) {
       toast.error('Minimum deposit is ₵10');
@@ -89,21 +86,12 @@ export default function WalletPage() {
 
     setIsDepositing(true);
     try {
-      const response = await fetch(`${API_URL}/wallet/deposit`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          amount,
-          paymentMethod,
-          phoneNumber: phoneNumber || undefined,
-        }),
+      const { data } = await api.post('/wallet/deposit', {
+        amount,
+        paymentMethod,
+        phoneNumber: phoneNumber || undefined,
       });
 
-      const data = await response.json();
-      
       if (data.success && data.data.authorizationUrl) {
         // Redirect to Paystack payment page
         window.location.href = data.data.authorizationUrl;
@@ -119,7 +107,7 @@ export default function WalletPage() {
 
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     const amount = parseFloat(withdrawAmount);
     if (isNaN(amount) || amount < 50) {
       toast.error('Minimum withdrawal is ₵50');
@@ -138,21 +126,12 @@ export default function WalletPage() {
 
     setIsWithdrawing(true);
     try {
-      const response = await fetch(`${API_URL}/wallet/withdraw`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          amount,
-          phoneNumber: withdrawPhone,
-          provider: withdrawProvider,
-        }),
+      const { data } = await api.post('/wallet/withdraw', {
+        amount,
+        phoneNumber: withdrawPhone,
+        provider: withdrawProvider,
       });
 
-      const data = await response.json();
-      
       if (data.success) {
         toast.success(data.data.message || 'Withdrawal initiated');
         fetchWallet();
@@ -197,7 +176,7 @@ export default function WalletPage() {
               <Wallet className="w-8 h-8 text-ghana-gold-500" />
             </div>
           </div>
-          <button 
+          <button
             onClick={fetchWallet}
             className="mt-4 text-sm text-dark-400 hover:text-dark-200 flex items-center gap-2"
           >
@@ -210,33 +189,30 @@ export default function WalletPage() {
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setActiveTab('deposit')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-              activeTab === 'deposit'
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${activeTab === 'deposit'
                 ? 'bg-ghana-green-500 text-white font-medium'
                 : 'text-dark-400 hover:bg-dark-800'
-            }`}
+              }`}
           >
             <ArrowDownLeft className="w-4 h-4" />
             Deposit
           </button>
           <button
             onClick={() => setActiveTab('withdraw')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-              activeTab === 'withdraw'
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${activeTab === 'withdraw'
                 ? 'bg-ghana-gold-500 text-dark-950 font-medium'
                 : 'text-dark-400 hover:bg-dark-800'
-            }`}
+              }`}
           >
             <ArrowUpRight className="w-4 h-4" />
             Withdraw
           </button>
           <button
             onClick={() => setActiveTab('history')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${
-              activeTab === 'history'
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${activeTab === 'history'
                 ? 'bg-dark-700 text-white font-medium'
                 : 'text-dark-400 hover:bg-dark-800'
-            }`}
+              }`}
           >
             History
           </button>
@@ -273,18 +249,15 @@ export default function WalletPage() {
                       key={method.id}
                       type="button"
                       onClick={() => setPaymentMethod(method.id)}
-                      className={`p-4 rounded-xl border-2 transition-all ${
-                        paymentMethod === method.id
+                      className={`p-4 rounded-xl border-2 transition-all ${paymentMethod === method.id
                           ? 'border-ghana-gold-500 bg-ghana-gold-500/10'
                           : 'border-dark-700 hover:border-dark-600'
-                      }`}
+                        }`}
                     >
-                      <method.icon className={`w-6 h-6 mx-auto mb-2 ${
-                        paymentMethod === method.id ? 'text-ghana-gold-500' : 'text-dark-400'
-                      }`} />
-                      <span className={`text-xs ${
-                        paymentMethod === method.id ? 'text-ghana-gold-500' : 'text-dark-400'
-                      }`}>
+                      <method.icon className={`w-6 h-6 mx-auto mb-2 ${paymentMethod === method.id ? 'text-ghana-gold-500' : 'text-dark-400'
+                        }`} />
+                      <span className={`text-xs ${paymentMethod === method.id ? 'text-ghana-gold-500' : 'text-dark-400'
+                        }`}>
                         {method.label}
                       </span>
                     </button>
@@ -412,17 +385,16 @@ export default function WalletPage() {
           <div className="card">
             <h2 className="text-xl font-semibold mb-6">Transaction History</h2>
 
-              {wallet?.walletTransactions && wallet.walletTransactions.length > 0 ? (
-                <div className="space-y-3">
+            {wallet?.walletTransactions && wallet.walletTransactions.length > 0 ? (
+              <div className="space-y-3">
                 {wallet.walletTransactions.map((tx: WalletTransaction) => (
-                  <div 
+                  <div
                     key={tx.id}
                     className="flex items-center justify-between p-4 bg-dark-800/50 rounded-xl"
                   >
                     <div className="flex items-center gap-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        tx.type === 'DEPOSIT' ? 'bg-ghana-green-500/20' : 'bg-ghana-gold-500/20'
-                      }`}>
+                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${tx.type === 'DEPOSIT' ? 'bg-ghana-green-500/20' : 'bg-ghana-gold-500/20'
+                        }`}>
                         {tx.type === 'DEPOSIT' ? (
                           <ArrowDownLeft className="w-5 h-5 text-ghana-green-500" />
                         ) : (
@@ -437,14 +409,12 @@ export default function WalletPage() {
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`font-bold ${
-                        tx.amount > 0 ? 'text-ghana-green-500' : 'text-ghana-gold-500'
-                      }`}>
+                      <p className={`font-bold ${tx.amount > 0 ? 'text-ghana-green-500' : 'text-ghana-gold-500'
+                        }`}>
                         {tx.amount > 0 ? '+' : ''}₵{Math.abs(tx.amount).toLocaleString()}
                       </p>
-                      <p className={`text-xs ${
-                        tx.status === 'COMPLETED' ? 'text-ghana-green-500' : 'text-dark-500'
-                      }`}>
+                      <p className={`text-xs ${tx.status === 'COMPLETED' ? 'text-ghana-green-500' : 'text-dark-500'
+                        }`}>
                         {tx.status}
                       </p>
                     </div>

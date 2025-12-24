@@ -82,7 +82,7 @@ class PaymentService {
    */
   async initiateDeposit(data: InitiatePaymentData): Promise<any> {
     const reference = `DEP-${uuidv4().substring(0, 8).toUpperCase()}`;
-    
+
     // Create payment record
     const payment = await prisma.payment.create({
       data: {
@@ -102,13 +102,19 @@ class PaymentService {
       amount: Math.round(data.amount * 100), // Paystack uses pesewas
       currency: 'GHS',
       reference,
-      callback_url: data.callbackUrl || `${process.env.FRONTEND_URL}/payment/callback`,
       metadata: {
         userId: data.userId,
         paymentId: payment.id,
         type: 'DEPOSIT',
       },
     };
+
+    // Only set callback_url when we have a valid FRONTEND_URL or an explicit callbackUrl
+    const envFrontend = process.env.FRONTEND_URL;
+    const effectiveCallback = data.callbackUrl || (envFrontend ? `${envFrontend.replace(/\/$/, '')}/payment/callback` : undefined);
+    if (effectiveCallback) {
+      paystackPayload.callback_url = effectiveCallback;
+    }
 
     // Add mobile money channel if applicable
     if (data.paymentMethod.startsWith('MOMO_')) {
@@ -122,7 +128,7 @@ class PaymentService {
 
     try {
       const response = await createPaystackClient().post<PaystackInitResponse>('/transaction/initialize', paystackPayload);
-      
+
       // Update payment with Paystack reference
       await prisma.payment.update({
         where: { id: payment.id },
@@ -140,7 +146,7 @@ class PaymentService {
       };
     } catch (error: any) {
       console.error('Paystack init error:', error.response?.data || error.message);
-      
+
       // Update payment status to failed
       await prisma.payment.update({
         where: { id: payment.id },
