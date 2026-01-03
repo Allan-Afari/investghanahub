@@ -17,7 +17,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { businessAPI, kycAPI } from '../utils/api';
+import { businessAPI, kycAPI, messagesAPI } from '../utils/api';
 import FormInput from '../components/FormInput';
 import BusinessAnalyticsCard from '../components/BusinessAnalyticsCard';
 
@@ -61,6 +61,20 @@ interface BusinessOpportunity {
   targetAmount?: number | null;
 }
 
+interface MessageSender {
+  id?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+}
+
+interface Message {
+  id: string;
+  content: string;
+  createdAt: string;
+  sender?: MessageSender;
+}
+
 export default function OwnerPage() {
   const navigate = useNavigate();
 
@@ -100,6 +114,15 @@ export default function OwnerPage() {
   const [opportunityErrors, setOpportunityErrors] = useState<Record<string, string>>({});
   const [isSubmittingOpportunity, setIsSubmittingOpportunity] = useState(false);
 
+  const [showMessagesModal, setShowMessagesModal] = useState(false);
+  const [messagesBusinessId, setMessagesBusinessId] = useState<string | null>(null);
+  const [messagesBusinessName, setMessagesBusinessName] = useState('');
+  const [businessMessages, setBusinessMessages] = useState<Message[]>([]);
+  const [isLoadingMessages, setIsLoadingMessages] = useState(false);
+  const [replyToUser, setReplyToUser] = useState<{ id: string; name: string } | null>(null);
+  const [replyContent, setReplyContent] = useState('');
+  const [isSendingReply, setIsSendingReply] = useState(false);
+
   // Fetch data on mount
   useEffect(() => {
     fetchData();
@@ -120,6 +143,63 @@ export default function OwnerPage() {
       toast.error('Failed to load data');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Messaging helpers
+  const openMessagesForBusiness = async (business: Business) => {
+    setShowMessagesModal(true);
+    setMessagesBusinessId(business.id);
+    setMessagesBusinessName(business.name);
+    setIsLoadingMessages(true);
+    setReplyToUser(null);
+    setReplyContent('');
+
+    try {
+      const res = await messagesAPI.list({ businessId: business.id });
+      let msgs: Message[] = [];
+      const payload = res as unknown;
+      if (
+        typeof payload === 'object' &&
+        payload !== null &&
+        'data' in (payload as Record<string, unknown>) &&
+        Array.isArray((payload as { data: unknown }).data)
+      ) {
+        msgs = (payload as { data: Message[] }).data;
+      } else if (Array.isArray(payload)) {
+        msgs = payload as Message[];
+      }
+      setBusinessMessages(msgs);
+    } catch (error) {
+      console.error('Error loading messages:', error);
+      toast.error('Failed to load messages');
+    } finally {
+      setIsLoadingMessages(false);
+    }
+  };
+
+  const sendReplyToInvestor = async () => {
+    if (!messagesBusinessId || !replyToUser) return;
+    if (!replyContent.trim()) {
+      toast.error('Reply cannot be empty');
+      return;
+    }
+
+    setIsSendingReply(true);
+    try {
+      await messagesAPI.send({
+        receiverId: replyToUser.id,
+        businessId: messagesBusinessId,
+        content: replyContent.trim(),
+      });
+      toast.success('Reply sent');
+      setReplyContent('');
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      const message = err.response?.data?.message || 'Failed to send reply';
+      toast.error(message);
+    } finally {
+      setIsSendingReply(false);
     }
   };
 
@@ -356,15 +436,23 @@ export default function OwnerPage() {
                         <span>{business.region}</span>
                       </div>
                     </div>
-                    {business.status === 'APPROVED' && (
+                    <div className="flex flex-col gap-2">
+                      {business.status === 'APPROVED' && (
+                        <button
+                          onClick={() => { setSelectedBusinessId(business.id); setShowOpportunityForm(true); }}
+                          className="btn-secondary text-sm py-2"
+                        >
+                          <Plus className="w-4 h-4 mr-1 inline" />
+                          Add Opportunity
+                        </button>
+                      )}
                       <button
-                        onClick={() => { setSelectedBusinessId(business.id); setShowOpportunityForm(true); }}
-                        className="btn-secondary text-sm py-2"
+                        onClick={() => openMessagesForBusiness(business)}
+                        className="btn-secondary text-xs py-2"
                       >
-                        <Plus className="w-4 h-4 mr-1 inline" />
-                        Add Opportunity
+                        View Messages
                       </button>
-                    )}
+                    </div>
                   </div>
 
                   {business.status === 'REJECTED' && business.rejectionReason && (
@@ -693,6 +781,96 @@ export default function OwnerPage() {
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {showMessagesModal && (
+          <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
+            <div className="card max-w-2xl w-full my-8 animate-slide-up">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-xl font-display font-bold">Messages for {messagesBusinessName}</h3>
+                <button
+                  type="button"
+                  onClick={() => { setShowMessagesModal(false); setBusinessMessages([]); setReplyContent(''); setReplyToUser(null); }}
+                  className="text-sm text-dark-400 hover:text-dark-200"
+                >
+                  Close
+                </button>
+              </div>
+
+              {isLoadingMessages ? (
+                <div className="flex items-center justify-center py-10">
+                  <Loader2 className="w-6 h-6 animate-spin text-ghana-gold-500" />
+                </div>
+              ) : businessMessages.length === 0 ? (
+                <p className="text-sm text-dark-400">No messages yet for this business.</p>
+              ) : (
+                <div className="mb-6 space-y-3 max-h-72 overflow-y-auto">
+                  {businessMessages.map((msg: Message) => (
+                    <button
+                      key={msg.id}
+                      type="button"
+                      onClick={() => setReplyToUser({
+                        id: msg.sender?.id as string,
+                        name: `${msg.sender?.firstName ?? ''} ${msg.sender?.lastName ?? ''}`.trim() || msg.sender?.email || 'Investor',
+                      })}
+                      className="w-full text-left p-3 rounded-lg bg-dark-800/60 border border-dark-700 hover:border-ghana-gold-500"
+                    >
+                      <div className="flex justify-between mb-1">
+                        <span className="text-sm font-medium">
+                          {msg.sender?.firstName} {msg.sender?.lastName}
+                        </span>
+                        <span className="text-xs text-dark-500">
+                          {new Date(msg.createdAt).toLocaleString()}
+                        </span>
+                      </div>
+                      <p className="text-xs text-dark-300 line-clamp-2">{msg.content}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div className="border-t border-dark-700 pt-4 mt-4">
+                <p className="text-xs text-dark-500 mb-2">
+                  {replyToUser ? (
+                    <>Replying to <span className="font-medium">{replyToUser.name}</span></>
+                  ) : (
+                    'Select a message above to reply to an investor.'
+                  )}
+                </p>
+                <textarea
+                  value={replyContent}
+                  onChange={(e) => setReplyContent(e.target.value)}
+                  rows={3}
+                  className="input mb-3"
+                  placeholder="Type your reply..."
+                />
+                <div className="flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => { setReplyContent(''); setReplyToUser(null); }}
+                    className="btn-secondary text-sm"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={sendReplyToInvestor}
+                    disabled={isSendingReply || !replyToUser || !replyContent.trim()}
+                    className="btn-primary text-sm flex items-center gap-2"
+                  >
+                    {isSendingReply ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Sending...
+                      </>
+                    ) : (
+                      'Send Reply'
+                    )}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

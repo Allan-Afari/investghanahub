@@ -14,7 +14,6 @@ import {
   RefreshCw
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-import { useAuth } from '../App';
 import FormInput from '../components/FormInput';
 import api from '../utils/api';
 
@@ -33,13 +32,14 @@ interface WalletTransaction {
   amount: number;
   status: string;
   createdAt: string;
+  reference?: string;
 }
 
 export default function WalletPage() {
-  const { token } = useAuth();
   const [wallet, setWallet] = useState<WalletData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'deposit' | 'withdraw' | 'history'>('deposit');
+  const [verifyingRef, setVerifyingRef] = useState<string | null>(null);
 
   // Deposit form
   const [depositAmount, setDepositAmount] = useState('');
@@ -52,6 +52,12 @@ export default function WalletPage() {
   const [withdrawPhone, setWithdrawPhone] = useState('');
   const [withdrawProvider, setWithdrawProvider] = useState('MTN');
   const [isWithdrawing, setIsWithdrawing] = useState(false);
+  const [withdrawMode, setWithdrawMode] = useState<'MOMO' | 'BANK'>('MOMO');
+  const [banks, setBanks] = useState<{ name: string; code: string }[]>([]);
+  const [bankCode, setBankCode] = useState('');
+  const [bankAccountNumber, setBankAccountNumber] = useState('');
+  const [bankAccountName, setBankAccountName] = useState('');
+  const [isValidatingBank, setIsValidatingBank] = useState(false);
 
   useEffect(() => {
     fetchWallet();
@@ -67,6 +73,74 @@ export default function WalletPage() {
       console.error('Error fetching wallet:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    const fetchBanks = async () => {
+      try {
+        const { data } = await api.get('/payments/banks');
+        if (data?.success && Array.isArray(data.data)) {
+          const normalized = (data.data as unknown[])
+            .filter((b): b is Record<string, unknown> => typeof b === 'object' && b !== null)
+            .map((b) => ({
+              name: String((b as Record<string, unknown>).name ?? ''),
+              code: String((b as Record<string, unknown>).code ?? ''),
+            }));
+          setBanks(normalized.map((b) => ({ name: b.name, code: b.code })));
+        }
+      } catch (e) {
+        // silently ignore
+      }
+    };
+    if (activeTab === 'withdraw' && withdrawMode === 'BANK' && banks.length === 0) {
+      fetchBanks();
+    }
+  }, [activeTab, withdrawMode]);
+
+  const validateBank = async () => {
+    if (!bankCode || !bankAccountNumber) {
+      toast.error('Select a bank and enter account number');
+      return;
+    }
+    setIsValidatingBank(true);
+    try {
+      const { data } = await api.post('/payments/validate-bank', {
+        account_number: bankAccountNumber,
+        bank_code: bankCode,
+      });
+      if (data?.success) {
+        setBankAccountName(data.data?.account_name || '');
+        toast.success('Bank account validated');
+      } else {
+        toast.error(data?.message || 'Validation failed');
+      }
+    } catch {
+      toast.error('Validation failed');
+    } finally {
+      setIsValidatingBank(false);
+    }
+  };
+
+  const verifyDeposit = async (tx: WalletTransaction) => {
+    const rawRef = tx.reference || '';
+    const ref = rawRef.startsWith('WT-') ? rawRef.slice(3) : rawRef;
+    if (!ref) return;
+    setVerifyingRef(rawRef);
+    try {
+      const { data } = await api.post('/wallet/verify-payment', { reference: ref });
+      if (data?.success) {
+        const last = localStorage.getItem('lastDepositReference');
+        if (last && last === ref) localStorage.removeItem('lastDepositReference');
+        toast.success('Payment verified');
+        fetchWallet();
+      } else {
+        toast.error(data?.message || 'Verification failed');
+      }
+    } catch {
+      toast.error('Verification failed');
+    } finally {
+      setVerifyingRef(null);
     }
   };
 
@@ -114,11 +188,6 @@ export default function WalletPage() {
       return;
     }
 
-    if (!withdrawPhone) {
-      toast.error('Phone number is required');
-      return;
-    }
-
     if (wallet && amount > wallet.balance) {
       toast.error('Insufficient balance');
       return;
@@ -126,18 +195,43 @@ export default function WalletPage() {
 
     setIsWithdrawing(true);
     try {
-      const { data } = await api.post('/wallet/withdraw', {
-        amount,
-        phoneNumber: withdrawPhone,
-        provider: withdrawProvider,
-      });
-
-      if (data.success) {
-        toast.success(data.data.message || 'Withdrawal initiated');
-        fetchWallet();
-        setWithdrawAmount('');
+      if (withdrawMode === 'MOMO') {
+        if (!withdrawPhone) {
+          toast.error('Phone number is required');
+          setIsWithdrawing(false);
+          return;
+        }
+        const { data } = await api.post('/wallet/withdraw', {
+          amount,
+          phoneNumber: withdrawPhone,
+          provider: withdrawProvider,
+        });
+        if (data.success) {
+          toast.success(data.data.message || 'Withdrawal initiated');
+          fetchWallet();
+          setWithdrawAmount('');
+        } else {
+          toast.error(data.message || 'Withdrawal failed');
+        }
       } else {
-        toast.error(data.message || 'Withdrawal failed');
+        if (!bankCode || !bankAccountNumber) {
+          toast.error('Select bank and enter account number');
+          setIsWithdrawing(false);
+          return;
+        }
+        const { data } = await api.post('/wallet/withdraw-bank', {
+          amount,
+          account_number: bankAccountNumber,
+          bank_code: bankCode,
+          account_name: bankAccountName || 'Account Holder',
+        });
+        if (data.success) {
+          toast.success(data.data.message || 'Withdrawal initiated');
+          fetchWallet();
+          setWithdrawAmount('');
+        } else {
+          toast.error(data.message || 'Withdrawal failed');
+        }
       }
     } catch (error) {
       toast.error('Failed to initiate withdrawal');
@@ -190,8 +284,8 @@ export default function WalletPage() {
           <button
             onClick={() => setActiveTab('deposit')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${activeTab === 'deposit'
-                ? 'bg-ghana-green-500 text-white font-medium'
-                : 'text-dark-400 hover:bg-dark-800'
+              ? 'bg-ghana-green-500 text-white font-medium'
+              : 'text-dark-400 hover:bg-dark-800'
               }`}
           >
             <ArrowDownLeft className="w-4 h-4" />
@@ -200,8 +294,8 @@ export default function WalletPage() {
           <button
             onClick={() => setActiveTab('withdraw')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${activeTab === 'withdraw'
-                ? 'bg-ghana-gold-500 text-dark-950 font-medium'
-                : 'text-dark-400 hover:bg-dark-800'
+              ? 'bg-ghana-gold-500 text-dark-950 font-medium'
+              : 'text-dark-400 hover:bg-dark-800'
               }`}
           >
             <ArrowUpRight className="w-4 h-4" />
@@ -210,8 +304,8 @@ export default function WalletPage() {
           <button
             onClick={() => setActiveTab('history')}
             className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all ${activeTab === 'history'
-                ? 'bg-dark-700 text-white font-medium'
-                : 'text-dark-400 hover:bg-dark-800'
+              ? 'bg-dark-700 text-white font-medium'
+              : 'text-dark-400 hover:bg-dark-800'
               }`}
           >
             History
@@ -250,8 +344,8 @@ export default function WalletPage() {
                       type="button"
                       onClick={() => setPaymentMethod(method.id)}
                       className={`p-4 rounded-xl border-2 transition-all ${paymentMethod === method.id
-                          ? 'border-ghana-gold-500 bg-ghana-gold-500/10'
-                          : 'border-dark-700 hover:border-dark-600'
+                        ? 'border-ghana-gold-500 bg-ghana-gold-500/10'
+                        : 'border-dark-700 hover:border-dark-600'
                         }`}
                     >
                       <method.icon className={`w-6 h-6 mx-auto mb-2 ${paymentMethod === method.id ? 'text-ghana-gold-500' : 'text-dark-400'
@@ -321,26 +415,88 @@ export default function WalletPage() {
                 max={wallet?.balance || 0}
               />
 
-              <div>
-                <label className="label">Mobile Money Provider</label>
-                <select
-                  value={withdrawProvider}
-                  onChange={(e) => setWithdrawProvider(e.target.value)}
-                  className="select"
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setWithdrawMode('MOMO')}
+                  className={`px-3 py-2 rounded-lg text-sm ${withdrawMode === 'MOMO' ? 'bg-ghana-gold-500 text-dark-950' : 'bg-dark-800 text-dark-300'}`}
                 >
-                  <option value="MTN">MTN Mobile Money</option>
-                  <option value="VODAFONE">Vodafone Cash</option>
-                  <option value="AIRTELTIGO">AirtelTigo Money</option>
-                </select>
+                  Mobile Money
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setWithdrawMode('BANK')}
+                  className={`px-3 py-2 rounded-lg text-sm ${withdrawMode === 'BANK' ? 'bg-ghana-gold-500 text-dark-950' : 'bg-dark-800 text-dark-300'}`}
+                >
+                  Bank Transfer
+                </button>
               </div>
 
-              <FormInput
-                label="Phone Number"
-                type="tel"
-                value={withdrawPhone}
-                onChange={(e) => setWithdrawPhone(e.target.value)}
-                placeholder="+233240001234 or 0240001234"
-              />
+              {withdrawMode === 'MOMO' ? (
+                <>
+                  <div>
+                    <label className="label">Mobile Money Provider</label>
+                    <select
+                      value={withdrawProvider}
+                      onChange={(e) => setWithdrawProvider(e.target.value)}
+                      className="select"
+                    >
+                      <option value="MTN">MTN Mobile Money</option>
+                      <option value="VODAFONE">Vodafone Cash</option>
+                      <option value="AIRTELTIGO">AirtelTigo Money</option>
+                    </select>
+                  </div>
+                  <FormInput
+                    label="Phone Number"
+                    type="tel"
+                    value={withdrawPhone}
+                    onChange={(e) => setWithdrawPhone(e.target.value)}
+                    placeholder="+233240001234 or 0240001234"
+                  />
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="label">Bank</label>
+                    <select
+                      value={bankCode}
+                      onChange={(e) => setBankCode(e.target.value)}
+                      className="select"
+                    >
+                      <option value="">Select bank</option>
+                      {banks.map((b) => (
+                        <option key={b.code} value={b.code}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <FormInput
+                    label="Account Number"
+                    type="tel"
+                    value={bankAccountNumber}
+                    onChange={(e) => setBankAccountNumber(e.target.value)}
+                    placeholder="Enter bank account number"
+                  />
+                  <div className="flex items-end gap-2">
+                    <div className="flex-1">
+                      <FormInput
+                        label="Account Name (auto if validated)"
+                        type="text"
+                        value={bankAccountName}
+                        onChange={(e) => setBankAccountName(e.target.value)}
+                        placeholder="Optional"
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={validateBank}
+                      disabled={isValidatingBank || !bankCode || !bankAccountNumber}
+                      className="btn-secondary h-[42px]"
+                    >
+                      {isValidatingBank ? 'Validating...' : 'Validate'}
+                    </button>
+                  </div>
+                </>
+              )}
 
               {withdrawAmount && (
                 <div className="p-4 bg-dark-800/50 rounded-xl">
@@ -406,6 +562,9 @@ export default function WalletPage() {
                         <p className="text-xs text-dark-500">
                           {new Date(tx.createdAt).toLocaleDateString()}
                         </p>
+                        {tx.reference && (
+                          <p className="text-[10px] text-dark-600">Ref: {tx.reference}</p>
+                        )}
                       </div>
                     </div>
                     <div className="text-right">
@@ -413,10 +572,22 @@ export default function WalletPage() {
                         }`}>
                         {tx.amount > 0 ? '+' : ''}₵{Math.abs(tx.amount).toLocaleString()}
                       </p>
-                      <p className={`text-xs ${tx.status === 'COMPLETED' ? 'text-ghana-green-500' : 'text-dark-500'
-                        }`}>
-                        {tx.status}
-                      </p>
+                      <div className="flex items-center gap-2 justify-end">
+                        <span className={`text-xs ${tx.status === 'COMPLETED' ? 'text-ghana-green-500' : tx.status === 'FAILED' ? 'text-ghana-red-500' : 'text-dark-400'}`}>
+                          {tx.status}
+                        </span>
+                        {tx.type === 'DEPOSIT' && tx.status !== 'COMPLETED' && tx.reference && (
+                          <button
+                            onClick={() => verifyDeposit(tx)}
+                            disabled={verifyingRef === tx.reference}
+                            className="btn-secondary btn-xs"
+                          >
+                            {verifyingRef === tx.reference ? (
+                              <span className="inline-flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Verifying</span>
+                            ) : 'Verify'}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 ))}

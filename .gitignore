@@ -42,3 +42,13 @@ backend/prisma/migrations/
 *.tmp
 *.temp
 
+# Secrets
+# Do not commit Firebase service account keys
+backend/investghanahub-firebase-adminsdk-*.json
+
+# Android/Capacitor secrets
+frontend/android/app/google-services.json
+
+# Frontend env files
+frontend/.env*
+

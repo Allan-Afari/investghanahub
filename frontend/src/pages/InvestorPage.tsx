@@ -21,8 +21,9 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useAuth } from '../App';
-import { investmentAPI, kycAPI } from '../utils/api';
+import { investmentAPI, kycAPI, messagesAPI, legalAPI } from '../utils/api';
 import DashboardTable from '../components/DashboardTable';
+import ProfitSummaryCard from '../components/ProfitSummaryCard';
 import InvestorAnalytics from '../components/InvestorAnalytics';
 
 type InvestorTab = 'opportunities' | 'portfolio' | 'history';
@@ -34,6 +35,14 @@ interface ApiErrorShape {
     };
   };
 }
+
+// Type guard to safely unwrap API responses that may return either raw data or { data: T }
+function hasData<T extends object>(x: unknown): x is { data: T } {
+  return typeof x === 'object' && x !== null && 'data' in (x as Record<string, unknown>);
+}
+
+type TermsDoc = { id: string; type?: string; version?: number; effectiveDate?: string };
+type DisclaimerDoc = { id: string; title?: string; content?: string };
 
 interface Opportunity {
   id: string;
@@ -110,6 +119,76 @@ export default function InvestorPage() {
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [investAmount, setInvestAmount] = useState('');
   const [isInvesting, setIsInvesting] = useState(false);
+  const [agreementId, setAgreementId] = useState<string | null>(null);
+  const [agreementContent, setAgreementContent] = useState<string | null>(null);
+  const [isLoadingAgreement, setIsLoadingAgreement] = useState(false);
+  const [hasAgreedToTerms, setHasAgreedToTerms] = useState(false);
+
+  const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
+  const [messageTarget, setMessageTarget] = useState<
+    { userId: string; name: string; businessId: string; businessName: string } | null
+  >(null);
+  const [messageSubject, setMessageSubject] = useState('');
+  const [messageContent, setMessageContent] = useState('');
+  const [isSendingMessage, setIsSendingMessage] = useState(false);
+
+  // Legal acceptance gating state
+  const [isLegalModalOpen, setIsLegalModalOpen] = useState(false);
+  const [legalDocs, setLegalDocs] = useState<{ terms: TermsDoc[]; disclaimers: DisclaimerDoc[] } | null>(null);
+  const [selectedTermsId, setSelectedTermsId] = useState<string | null>(null);
+  const [legalAccepting, setLegalAccepting] = useState(false);
+  const [legalError, setLegalError] = useState<string | null>(null);
+
+  const ensureLegalAccepted = async (): Promise<boolean> => {
+    try {
+      const checkRes = await legalAPI.check();
+      const accepted = hasData<{ accepted: boolean }>(checkRes)
+        ? checkRes.data.accepted
+        : (checkRes as { accepted?: boolean }).accepted ?? false;
+      if (accepted) return true;
+
+      const currentRes = await legalAPI.getCurrent();
+      type CurrentDocs = {
+        terms: TermsDoc[];
+        disclaimers: DisclaimerDoc[];
+      };
+      const docs = hasData<CurrentDocs>(currentRes)
+        ? currentRes.data
+        : (currentRes as CurrentDocs);
+      setLegalDocs({ terms: docs.terms, disclaimers: docs.disclaimers });
+      if (docs.terms && docs.terms.length > 0) {
+        setSelectedTermsId(docs.terms[0].id);
+      }
+      setIsLegalModalOpen(true);
+      return false;
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      const message = err.response?.data?.message || 'Unable to verify legal acceptance';
+      toast.error(message);
+      return false;
+    }
+  };
+
+  const acceptLegal = async () => {
+    if (!selectedTermsId) {
+      setLegalError('Please select a Terms document to accept.');
+      return;
+    }
+    setLegalAccepting(true);
+    setLegalError(null);
+    try {
+      const disclaimerIds = ((legalDocs?.disclaimers ?? []) as Array<{ id: string }>).map(d => d.id);
+      await legalAPI.accept(selectedTermsId, disclaimerIds);
+      setIsLegalModalOpen(false);
+      toast.success('Terms accepted. You can proceed.');
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      const message = err.response?.data?.message || 'Failed to save acceptance';
+      setLegalError(message);
+    } finally {
+      setLegalAccepting(false);
+    }
+  };
 
   // Fetch data on mount
   useEffect(() => {
@@ -145,6 +224,89 @@ export default function InvestorPage() {
     }
   };
 
+  const openMessageModalForOpportunity = async (opp: Opportunity) => {
+    try {
+      const res = await investmentAPI.getOpportunityById(opp.id);
+      type OwnerInfo = { id?: string; firstName?: string; lastName?: string; email?: string };
+      type BusinessInfo = { id?: string; name?: string; owner?: OwnerInfo };
+      type OpportunityDetail = { business?: BusinessInfo };
+      const oppData: OpportunityDetail = hasData<OpportunityDetail>(res) ? res.data : (res as unknown as OpportunityDetail);
+      const owner = oppData.business?.owner;
+
+      if (!owner?.id) {
+        toast.error('Could not find business owner to message.');
+        return;
+      }
+
+      const ownerName = `${owner.firstName ?? ''} ${owner.lastName ?? ''}`.trim() || owner.email || 'Business Owner';
+
+      if (!oppData.business?.id || !oppData.business?.name) {
+        toast.error('Business details unavailable for messaging.');
+        return;
+      }
+
+      setMessageTarget({
+        userId: owner.id as string,
+        name: ownerName,
+        businessId: oppData.business.id as string,
+        businessName: oppData.business.name as string,
+      });
+      setMessageSubject('');
+      setMessageContent('');
+      setIsMessageModalOpen(true);
+    } catch (error) {
+      console.error('Error preparing message modal:', error);
+      toast.error('Failed to open message window');
+    }
+  };
+
+  const loadAgreement = async () => {
+    if (!selectedOpportunity) {
+      toast.error('No opportunity selected');
+      return;
+    }
+
+    const amount = parseFloat(investAmount);
+    if (!investAmount || isNaN(amount)) {
+      toast.error('Enter an investment amount first');
+      return;
+    }
+
+    if (amount < selectedOpportunity.minInvestment) {
+      toast.error(`Minimum investment is ₵${selectedOpportunity.minInvestment}`);
+      return;
+    }
+    if (amount > selectedOpportunity.maxInvestment) {
+      toast.error(`Maximum investment is ₵${selectedOpportunity.maxInvestment}`);
+      return;
+    }
+
+    // Ensure current terms/disclaimers accepted before proceeding
+    const accepted = await ensureLegalAccepted();
+    if (!accepted) return; // Modal opened; user must accept and retry
+
+    setIsLoadingAgreement(true);
+    try {
+      const preview = await investmentAPI.previewAgreement(selectedOpportunity.id, amount);
+      const id = preview?.data?.agreementId as string | undefined;
+      const content = preview?.data?.content as string | undefined;
+
+      if (!id || !content) {
+        throw new Error('Failed to generate investment agreement');
+      }
+
+      setAgreementId(id);
+      setAgreementContent(content);
+      setHasAgreedToTerms(false);
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      const message = err.response?.data?.message || 'Failed to generate agreement';
+      toast.error(message);
+    } finally {
+      setIsLoadingAgreement(false);
+    }
+  };
+
   // Handle investment
   const handleInvest = async () => {
     if (!selectedOpportunity || !investAmount) return;
@@ -165,24 +327,35 @@ export default function InvestorPage() {
       return;
     }
 
+    // Ensure an agreement is generated and investor has explicitly agreed
+    if (!agreementId || !agreementContent) {
+      await loadAgreement();
+      toast.success('Please review the terms and agree before confirming your investment.');
+      return;
+    }
+
+    if (!hasAgreedToTerms) {
+      toast.error('You must agree to the investment terms before investing.');
+      return;
+    }
+
     setIsInvesting(true);
     try {
-      // 1) Create a draft agreement for this investment
-      const preview = await investmentAPI.previewAgreement(selectedOpportunity.id, amount);
-      const agreementId: string | undefined = preview?.data?.agreementId;
-
-      if (!agreementId) {
-        throw new Error('Failed to generate investment agreement');
-      }
-
-      // 2) Accept the agreement (auto-accept for now)
       await investmentAPI.acceptAgreement(agreementId);
-
-      // 3) Make the investment with the accepted agreement
-      await investmentAPI.invest(selectedOpportunity.id, amount, agreementId);
-      toast.success('Investment successful!');
+      const investRes = await investmentAPI.invest(selectedOpportunity.id, amount, agreementId);
+      type InvestPayload = { paymentUrl?: string };
+      const payload: InvestPayload = hasData<InvestPayload>(investRes) ? investRes.data : (investRes as unknown as InvestPayload);
+      if (payload?.paymentUrl) {
+        window.open(payload.paymentUrl as string, '_blank');
+        toast.success('Investment initialized. Complete payment via escrow.');
+      } else {
+        toast.success('Investment successful!');
+      }
       setSelectedOpportunity(null);
       setInvestAmount('');
+      setAgreementId(null);
+      setAgreementContent(null);
+      setHasAgreedToTerms(false);
       fetchData();
     } catch (error: unknown) {
       const err = error as ApiErrorShape;
@@ -190,6 +363,32 @@ export default function InvestorPage() {
       toast.error(message);
     } finally {
       setIsInvesting(false);
+    }
+  };
+
+  const sendMessageToBusiness = async () => {
+    if (!messageTarget) return;
+    if (!messageContent.trim()) {
+      toast.error('Message cannot be empty');
+      return;
+    }
+
+    setIsSendingMessage(true);
+    try {
+      await messagesAPI.send({
+        receiverId: messageTarget.userId,
+        businessId: messageTarget.businessId,
+        subject: messageSubject || undefined,
+        content: messageContent.trim(),
+      });
+      toast.success('Message sent');
+      setIsMessageModalOpen(false);
+    } catch (error: unknown) {
+      const err = error as ApiErrorShape;
+      const message = err.response?.data?.message || 'Failed to send message';
+      toast.error(message);
+    } finally {
+      setIsSendingMessage(false);
     }
   };
 
@@ -377,12 +576,21 @@ export default function InvestorPage() {
                             <p className="text-xs text-dark-500">Min. Investment</p>
                             <p className="font-semibold">₵{opp.minInvestment.toLocaleString()}</p>
                           </div>
-                          <button
-                            onClick={() => setSelectedOpportunity(opp)}
-                            className="btn-primary py-2 px-4 text-sm flex items-center gap-1"
-                          >
-                            Invest <ChevronRight className="w-4 h-4" />
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => openMessageModalForOpportunity(opp)}
+                              className="btn-secondary py-2 px-3 text-xs"
+                            >
+                              Message
+                            </button>
+                            <button
+                              onClick={() => setSelectedOpportunity(opp)}
+                              className="btn-primary py-2 px-4 text-sm flex items-center gap-1"
+                            >
+                              Invest <ChevronRight className="w-4 h-4" />
+                            </button>
+                          </div>
                         </div>
                       </div>
                     );
@@ -401,6 +609,7 @@ export default function InvestorPage() {
             {/* Portfolio Tab */}
             {activeTab === 'portfolio' && portfolio && (
               <div>
+                <ProfitSummaryCard />
                 {/* Stats */}
                 <div className="grid md:grid-cols-4 gap-6 mb-8">
                   <div className="stat-card">
@@ -553,11 +762,52 @@ export default function InvestorPage() {
                     </span>
                   </p>
                 )}
+                <div className="mt-4 p-3 bg-ghana-gold-500/10 border border-ghana-gold-500/30 rounded-lg text-xs text-dark-300">
+                  Investing involves risk. Your capital is at risk and returns are not guaranteed. By continuing you confirm that you understand these risks.
+                </div>
+              </div>
+
+              <div className="mb-4">
+                {!agreementContent && (
+                  <button
+                    type="button"
+                    onClick={loadAgreement}
+                    disabled={isLoadingAgreement || !investAmount}
+                    className="btn-secondary w-full flex items-center justify-center gap-2 text-sm mb-3"
+                  >
+                    {isLoadingAgreement ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        Generating terms...
+                      </>
+                    ) : (
+                      'Generate Terms & Agreement'
+                    )}
+                  </button>
+                )}
+
+                {agreementContent && (
+                  <div className="max-h-40 overflow-y-auto p-3 bg-dark-900/60 border border-dark-700 rounded-lg text-xs whitespace-pre-line mb-3">
+                    {agreementContent}
+                  </div>
+                )}
+
+                <label className="flex items-start gap-2">
+                  <input
+                    type="checkbox"
+                    checked={hasAgreedToTerms}
+                    onChange={(e) => setHasAgreedToTerms(e.target.checked)}
+                    className="mt-1 w-4 h-4 text-ghana-gold-500 border-dark-600 rounded focus:ring-ghana-gold-500"
+                  />
+                  <span className="text-xs text-dark-300">
+                    I have read and agree to the investment agreement and risk notice above.
+                  </span>
+                </label>
               </div>
 
               <div className="flex gap-4">
                 <button
-                  onClick={() => { setSelectedOpportunity(null); setInvestAmount(''); }}
+                  onClick={() => { setSelectedOpportunity(null); setInvestAmount(''); setAgreementId(null); setAgreementContent(null); setHasAgreedToTerms(false); }}
                   className="btn-secondary flex-1"
                 >
                   Cancel
@@ -574,6 +824,132 @@ export default function InvestorPage() {
                     </>
                   ) : (
                     'Confirm Investment'
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Legal Acceptance Modal */}
+        {isLegalModalOpen && (
+          <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
+            <div className="w-full max-w-2xl bg-dark-900 border border-dark-700 rounded-2xl shadow-xl p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-lg font-semibold">Review and Accept Terms</h3>
+                <button
+                  className="text-sm text-dark-400 hover:text-dark-200"
+                  onClick={() => setIsLegalModalOpen(false)}
+                >
+                  Close
+                </button>
+              </div>
+
+              <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
+                <div className="p-3 rounded-lg bg-dark-800 border border-dark-700">
+                  <p className="text-sm text-dark-300">
+                    Please review the current Terms and key risk disclosures before proceeding with any investment.
+                  </p>
+                </div>
+
+                {/* Terms */}
+                <div className="p-3 rounded-lg bg-dark-800 border border-dark-700">
+                  <p className="text-sm font-medium mb-2">Terms</p>
+                  <ul className="text-sm text-dark-300 list-disc pl-5 space-y-1">
+                    {(legalDocs?.terms ?? []).map((t: TermsDoc) => (
+                      <li key={t.id} className="flex items-center justify-between">
+                        <span>
+                          {t.type} v{t.version} (effective {t.effectiveDate ? new Date(t.effectiveDate).toLocaleDateString() : 'N/A'})
+                        </span>
+                        <input
+                          type="radio"
+                          name="terms"
+                          checked={selectedTermsId === t.id}
+                          onChange={() => setSelectedTermsId(t.id)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Disclaimers */}
+                <div className="p-3 rounded-lg bg-dark-800 border border-dark-700">
+                  <p className="text-sm font-medium mb-2">Risk Disclosures</p>
+                  <ul className="text-sm text-dark-300 list-disc pl-5 space-y-1">
+                    {(legalDocs?.disclaimers ?? []).map((d: DisclaimerDoc) => (
+                      <li key={d.id}>
+                        <span className="font-medium">{d.title}</span>: {d.content?.slice(0, 160)}{(d.content?.length ?? 0) > 160 ? '…' : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              {legalError && <p className="text-sm text-ghana-red-400 mt-2">{legalError}</p>}
+
+              <div className="mt-4 flex justify-end gap-3">
+                <button className="btn-secondary text-sm" onClick={() => setIsLegalModalOpen(false)}>Cancel</button>
+                <button className="btn-primary text-sm" onClick={acceptLegal} disabled={legalAccepting || !selectedTermsId}>
+                  {legalAccepting ? 'Saving…' : 'I Accept'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isMessageModalOpen && messageTarget && (
+          <div className="fixed inset-0 bg-dark-950/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="card max-w-md w-full animate-slide-up">
+              <h3 className="text-xl font-display font-bold mb-2">
+                Message {messageTarget.businessName}
+              </h3>
+              <p className="text-dark-400 text-xs mb-4">
+                To: {messageTarget.name}
+              </p>
+
+              <div className="mb-4">
+                <label className="label">Subject (optional)</label>
+                <input
+                  type="text"
+                  value={messageSubject}
+                  onChange={(e) => setMessageSubject(e.target.value)}
+                  className="input"
+                  placeholder="Question about this opportunity"
+                />
+              </div>
+
+              <div className="mb-6">
+                <label className="label">Message</label>
+                <textarea
+                  value={messageContent}
+                  onChange={(e) => setMessageContent(e.target.value)}
+                  rows={4}
+                  className="input"
+                  placeholder="Type your message to the business owner..."
+                />
+              </div>
+
+              <div className="flex gap-4">
+                <button
+                  type="button"
+                  onClick={() => { setIsMessageModalOpen(false); setMessageContent(''); setMessageSubject(''); }}
+                  className="btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={sendMessageToBusiness}
+                  disabled={isSendingMessage || !messageContent.trim()}
+                  className="btn-primary flex-1 flex items-center justify-center gap-2"
+                >
+                  {isSendingMessage ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    'Send Message'
                   )}
                 </button>
               </div>
