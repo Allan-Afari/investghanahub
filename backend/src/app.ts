@@ -6,7 +6,15 @@ import path from 'path';
 import { env } from './config/env';
 
 // Import security middleware
-import { authLimiter, uploadLimiter, validateFileUpload } from './middleware/securityMiddleware';
+import { authLimiter, uploadLimiter, validateFileUpload, securityHeaders, blockSensitiveFiles } from './middleware/securityMiddleware';
+import {
+  accountLockoutMiddleware,
+  suspiciousActivityMiddleware,
+  sessionTimeoutMiddleware,
+  passwordSprayProtection,
+  sanitizeInput,
+  concurrentSessionProtection,
+} from './middleware/enhancedSecurityMiddleware';
 
 // Import logging middleware
 import { httpLogger } from './middleware/loggingMiddleware';
@@ -44,6 +52,7 @@ import disputeRoutes from './routes/disputeRoutes';
 
 // Initialize Express application
 const app: Application = express();
+app.disable('etag');
 
 // ===========================================
 // MONITORING INITIALIZATION
@@ -71,8 +80,11 @@ if (process.env.ENABLE_METRICS === 'true') {
 // SECURITY MIDDLEWARE
 // ===========================================
 
-// Helmet for security headers
-app.use(helmet());
+// Helmet for security headers (with stricter CSP)
+app.use(securityHeaders);
+
+// Block access to sensitive files
+app.use(blockSensitiveFiles);
 
 // CORS configuration
 const corsOptions = {
@@ -80,18 +92,27 @@ const corsOptions = {
     // Mobile apps (Capacitor / WebView) often send no Origin header.
     if (!origin) return callback(null, true);
 
-    const allowedOrigins = new Set([
-      env.FRONTEND_URL,
-      'capacitor://localhost',
-      'ionic://localhost',
-      'http://localhost',
-      'https://localhost',
-    ]);
+    const allowedOrigins = new Set<string>([env.FRONTEND_URL]);
+    if (env.NODE_ENV !== 'production') {
+      allowedOrigins.add('capacitor://localhost');
+      allowedOrigins.add('ionic://localhost');
+      allowedOrigins.add('http://localhost');
+      allowedOrigins.add('https://localhost');
+      // Allow all localhost ports in development
+      allowedOrigins.add('http://localhost:5173');
+      allowedOrigins.add('http://localhost:3000');
+      allowedOrigins.add('http://127.0.0.1:5173');
+      allowedOrigins.add('http://127.0.0.1:3000');
+    }
 
     if (allowedOrigins.has(origin)) return callback(null, true);
 
-    // Allow local network origins during development/testing.
-    if (/^https?:\/\/192\.168\./.test(origin)) return callback(null, true);
+    // Allow local network origins and localhost with any port only in non-production during development/testing.
+    if (env.NODE_ENV !== 'production') {
+      if (/^https?:\/\/192\.168\./.test(origin)) return callback(null, true);
+      if (/^https?:\/\/localhost(:\d+)?$/.test(origin)) return callback(null, true);
+      if (/^https?:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)) return callback(null, true);
+    }
 
     return callback(null, false);
   },
@@ -115,6 +136,14 @@ const limiter = rateLimit({
 });
 
 app.use(limiter);
+
+// Enhanced security middleware
+app.use(suspiciousActivityMiddleware); // Detect suspicious IPs
+app.use(sanitizeInput); // Prevent XSS attacks
+app.use(accountLockoutMiddleware); // Prevent brute force
+app.use(passwordSprayProtection); // Prevent password spraying
+app.use(sessionTimeoutMiddleware); // Session management
+app.use(concurrentSessionProtection); // Prevent session abuse
 
 // ===========================================
 // BODY PARSING MIDDLEWARE
@@ -159,6 +188,9 @@ app.use('/api/investments', investmentRoutes);
 app.use('/api/investments', investmentTrackingRoutes); // Investment tracking and analytics
 app.use('/api/watchlist', watchlistRoutes); // Watchlist functionality
 app.use('/api/admin', adminRoutes);
+// Enhanced admin routes available at: /api/admin/enhanced/*
+// See: backend/src/routes/enhancedAdminRoutes.ts
+// Uncomment after testing: app.use('/api/admin/enhanced', enhancedAdminRoutes);
 app.use('/api/password', passwordRoutes);
 app.use('/api/wallet', walletRoutes);
 app.use('/api/upload', uploadLimiter, validateFileUpload, uploadRoutes);
