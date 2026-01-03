@@ -1,0 +1,22 @@
+- Nikto v2.1.5/2.1.5
++ Target Host: 192.168.8.156
++ Target Port: 5001
++ GET /: Uncommon header 'cross-origin-opener-policy' found, with contents: same-origin
++ GET /: Uncommon header 'x-permitted-cross-domain-policies' found, with contents: none
++ GET /: Uncommon header 'x-content-type-options' found, with contents: nosniff
++ GET /: Uncommon header 'strict-transport-security' found, with contents: max-age=31536000; includeSubDomains; preload
++ GET /: Uncommon header 'content-security-policy' found, with contents: default-src 'self';style-src 'self' 'unsafe-inline';script-src 'self';img-src 'self' data: https:;connect-src 'self' https:;font-src 'self' https: data:;object-src 'none';media-src 'self';frame-src 'none';base-uri 'self';form-action 'self';frame-ancestors 'self';script-src-attr 'none';upgrade-insecure-requests
++ GET /: Uncommon header 'x-frame-options' found, with contents: DENY
++ GET /: Uncommon header 'x-dns-prefetch-control' found, with contents: off
++ GET /: Uncommon header 'ratelimit-limit' found, with contents: 100
++ GET /: Uncommon header 'referrer-policy' found, with contents: strict-origin-when-cross-origin
++ GET /: Uncommon header 'access-control-allow-credentials' found, with contents: true
++ GET /: Uncommon header 'ratelimit-reset' found, with contents: 900
++ GET /: Uncommon header 'x-xss-protection' found, with contents: 0
++ GET /: Uncommon header 'ratelimit-remaining' found, with contents: 97
++ GET /: Uncommon header 'cross-origin-resource-policy' found, with contents: same-origin
++ GET /: Uncommon header 'ratelimit-policy' found, with contents: 100;w=900
++ GET /: Uncommon header 'x-download-options' found, with contents: noopen
++ GET /: Uncommon header 'origin-agent-cluster' found, with contents: ?1
++ OPTIONS *: Uncommon header 'access-control-allow-headers' found, with contents: Content-Type,Authorization,X-Requested-With
++ OPTIONS *: Uncommon header 'access-control-allow-methods' found, with contents: GET,POST,PUT,PATCH,DELETE,OPTIONS

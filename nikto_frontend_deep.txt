@@ -1,0 +1,23 @@
+- Nikto v2.1.5/2.1.5
++ Target Host: 192.168.8.156
++ Target Port: 5173
++ GET /: Server leaks inodes via ETags, header found with file /, fields: 0xW/69c 0xXEw4+KAWOQzNeGd2o1Yc6QmHD3g 
++ GET /: Uncommon header 'x-frame-options' found, with contents: DENY
++ GET /: Uncommon header 'x-content-type-options' found, with contents: nosniff
++ GET /: Uncommon header 'referrer-policy' found, with contents: strict-origin-when-cross-origin
++ GET /: Uncommon header 'content-security-policy' found, with contents: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' http://localhost:5001 http://192.168.8.156:5001;
++ GET /: Uncommon header 'strict-transport-security' found, with contents: max-age=31536000; includeSubDomains; preload
++ GET /: Uncommon header 'x-xss-protection' found, with contents: 1; mode=block
++ OPTIONS /: Uncommon header 'access-control-allow-methods' found, with contents: GET,HEAD,PUT,PATCH,POST,DELETE
++ -3092: GET /css: /css: This might be interesting...
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'x-permitted-cross-domain-policies' found, with contents: none
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'cross-origin-resource-policy' found, with contents: same-origin
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'ratelimit-remaining' found, with contents: 99
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'cross-origin-opener-policy' found, with contents: same-origin
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'ratelimit-policy' found, with contents: 100;w=900
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'ratelimit-reset' found, with contents: 900
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'x-dns-prefetch-control' found, with contents: off
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'ratelimit-limit' found, with contents: 100
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'access-control-allow-credentials' found, with contents: true
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'x-download-options' found, with contents: noopen
++ GET /api.php?t_path_core=http://cirt.net/rfiinc.txt??&cmd=id: Uncommon header 'origin-agent-cluster' found, with contents: ?1
